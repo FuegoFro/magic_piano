@@ -1,40 +1,48 @@
+use std::collections::{BTreeMap, HashMap};
+
 use futures::{stream, StreamExt};
 use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::Uint8Array;
 use once_cell::sync::Lazy;
-use regex::{Match, Regex, RegexBuilder};
-use std::collections::BTreeMap;
+use regex::{Regex, RegexBuilder};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioBuffer, AudioContext};
+use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode};
 
-/// Inspired by https://tonejs.github.io/docs/latest/classes/Sampler
+/// Heavily inspired by https://tonejs.github.io/docs/latest/classes/Sampler
 pub struct Sampler {
+    ctx: AudioContext,
     buffers: BTreeMap<i32, AudioBuffer>,
+    active_notes: HashMap<i32, (AudioBufferSourceNode, GainNode)>,
 }
 
 impl Sampler {
     /// * `urls`: A series of (note_name, url) pairs
     // fn new(urls: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>) -> Self {
-    pub async fn new(ctx: &AudioContext, urls: &[(&str, &str)]) -> Self {
+    pub async fn new(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
+        let ctx_ref = &ctx;
+        let buffers = stream::iter(urls.iter())
+            .then(|(note_name, url)| async move {
+                (
+                    note_name_to_midi_note(note_name)
+                        .unwrap_or_else(|| panic!("Malformed note name {note_name}")),
+                    url_to_audio_buffer(ctx_ref, url)
+                        .await
+                        .unwrap_or_else(|e| panic!("Unable to fetch sample at {url}: {e:?}")),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .await;
+
         Self {
-            buffers: stream::iter(urls.iter())
-                .then(|(note_name, url)| async move {
-                    (
-                        note_name_to_midi_note(note_name)
-                            .unwrap_or_else(|| panic!("Malformed note name {note_name}")),
-                        url_to_audio_buffer(ctx, url)
-                            .await
-                            .unwrap_or_else(|e| panic!("Unable to fetch sample at {url}: {e:?}")),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>()
-                .await,
+            ctx,
+            buffers,
+            active_notes: Default::default(),
         }
     }
 
-    pub fn start_note(&self, ctx: &AudioContext, midi_note: i32) -> Result<(), JsValue> {
+    pub fn start_note(&mut self, midi_note: i32) -> Result<(), JsValue> {
         // Find closest note
         let above = self.buffers.range(midi_note..).next();
         let below = self.buffers.range(..=midi_note).last();
@@ -47,15 +55,34 @@ impl Sampler {
                 panic!("Unable to find a corresponding buffer for midi note {midi_note}")
             });
 
-        // Pitch shift accordingly and play
-        let buffer_source = ctx.create_buffer_source()?;
+        // Pitch shift accordingly
+        let buffer_source = self.ctx.create_buffer_source()?;
         buffer_source.set_buffer(Some(buffer));
-        buffer_source.connect_with_audio_node(&ctx.destination())?;
 
         let frequency_ratio = 2f32.powf(diff as f32 / 12.0);
         buffer_source.playback_rate().set_value(frequency_ratio);
 
+        // Set up our gain (for fadeout at the end) and play
+        let gain = self.ctx.create_gain()?;
+        gain.gain().set_value(1.0);
+
+        buffer_source.connect_with_audio_node(&gain)?;
+        gain.connect_with_audio_node(&self.ctx.destination())?;
+
         buffer_source.start()?;
+        self.active_notes.insert(midi_note, (buffer_source, gain));
+
+        Ok(())
+    }
+
+    pub fn stop_note(&mut self, midi_note: i32) -> Result<(), JsValue> {
+        if let Some((buffer_source, gain)) = self.active_notes.remove(&midi_note) {
+            let current_time = self.ctx.current_time();
+            let end_time = current_time + 1.0;
+            gain.gain().set_value_at_time(1.0, current_time)?;
+            gain.gain().linear_ramp_to_value_at_time(0.0, end_time)?;
+            buffer_source.stop_with_when(end_time)?;
+        }
 
         Ok(())
     }

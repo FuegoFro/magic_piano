@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 console_error_panic_hook = "0.1"
 console_log = "1.0.0"
 futures = "0.3.30"
-gloo = "0.11.0"
+gloo = { version = "0.11.0", features = ["default", "futures"] }
 itertools = "0.13.0"
 js-sys = "0.3.61"
 log = "0.4"
