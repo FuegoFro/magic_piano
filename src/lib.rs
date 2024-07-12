@@ -1,22 +1,20 @@
+use crate::sampler::Sampler;
 use gloo::events::{EventListener, EventListenerOptions};
 use gloo::utils::document;
-use itertools::Itertools;
 use log::{error, info};
-use midly::num::{u4, u7};
-use midly::{MidiMessage, Smf, TrackEventKind};
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use midly::Smf;
+use song::Song;
+use std::cell::{RefCell, RefMut};
+use std::collections::HashSet;
 use std::panic;
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
 use watchreload::start_reload_listener;
 use web_sys::{AudioContext, Event, KeyboardEvent};
 
-use crate::sampler::Sampler;
-
 mod sampler;
+mod song;
 
 #[wasm_bindgen]
 pub async fn start() {
@@ -32,25 +30,40 @@ pub async fn start() {
         }
     }
 
-    let ctx = AudioContext::new().unwrap();
-    let sampler = Rc::new(RefCell::new(Sampler::new(ctx, &NOTES).await));
-    let sampler2 = sampler.clone();
+    struct State {
+        sampler: RefCell<Sampler>,
+        song: Song,
+        voices: HashSet<usize>,
+    }
+    let state = {
+        let sampler = Sampler::new(AudioContext::new().unwrap(), &NOTES).await;
 
-    let data = include_bytes!("../examples/A Million Stars.mid");
-    let midi_file = Smf::parse(data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
-    let song = Song::from_smf(&midi_file);
+        let data = include_bytes!("../examples/A Million Stars.mid");
+        let midi_file =
+            Smf::parse(data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
+        let song = Song::from_smf(&midi_file);
+        let voices = get_voices(&song);
+        Rc::new(State {
+            sampler: RefCell::new(sampler),
+            song,
+            voices,
+        })
+    };
+    let state2 = state.clone();
 
     EventListener::new_with_options(
         &document(),
         "keydown",
         EventListenerOptions::enable_prevent_default(),
         move |event| {
-            if let Some(midi_note) = event_to_midi_note(event) {
-                if midi_note == 0 {
-                    spawn_local(play_song(sampler.clone(), song.clone()));
-                } else {
-                    sampler.borrow_mut().start_note(midi_note).unwrap();
-                }
+            if let Some(song_index) = event_to_song_index(event) {
+                let state = &state;
+                start_song_index(
+                    state.sampler.borrow_mut(),
+                    &state.song,
+                    &state.voices,
+                    song_index,
+                );
             }
         },
     )
@@ -61,8 +74,14 @@ pub async fn start() {
         "keyup",
         EventListenerOptions::enable_prevent_default(),
         move |event| {
-            if let Some(midi_note) = event_to_midi_note(event) {
-                sampler2.borrow_mut().stop_note(midi_note).unwrap();
+            if let Some(song_index) = event_to_song_index(event) {
+                let state = &state2;
+                stop_song_index(
+                    state.sampler.borrow_mut(),
+                    &state.song,
+                    &state.voices,
+                    song_index,
+                );
             }
         },
     )
@@ -104,7 +123,11 @@ const NOTES: [(&str, &str); 30] = [
     ("C8", "https://tonejs.github.io/audio/salamander/C8.mp3"),
 ];
 
-fn event_to_midi_note(event: &Event) -> Option<i32> {
+fn get_voices(song: &Song) -> HashSet<usize> {
+    (0..song.voices).into_iter().collect()
+}
+
+fn event_to_song_index(event: &Event) -> Option<usize> {
     let event = event.dyn_ref::<KeyboardEvent>().unwrap();
 
     // info!("{} | {}", event.key(), event.repeat());
@@ -113,23 +136,7 @@ fn event_to_midi_note(event: &Event) -> Option<i32> {
         return None;
     }
 
-    let midi_note = match event.key().as_ref() {
-        "q" => 60,
-        "2" => 61,
-        "w" => 62,
-        "3" => 63,
-        "e" => 64,
-        "r" => 65,
-        "5" => 66,
-        "t" => 67,
-        "6" => 68,
-        "y" => 69,
-        "7" => 70,
-        "u" => 71,
-        "i" => 72,
-        "b" => 0,
-        _ => return None,
-    };
+    let song_index = "qwerasdfzxcvuiopjkl;m,./".find(event.key().as_str())?;
 
     event.prevent_default();
 
@@ -138,142 +145,43 @@ fn event_to_midi_note(event: &Event) -> Option<i32> {
         // This needs to happen after we've prevented default.
         return None;
     }
-    Some(midi_note)
+    Some(song_index)
 }
 
-async fn play_song(sampler: Rc<RefCell<Sampler>>, song: Song) {
-    for slice in song.slices.iter() {
-        for (_voice, notes) in slice.notes_by_voice.iter().enumerate() {
-            for (&key, _) in notes.iter() {
-                sampler
-                    .borrow_mut()
-                    .start_note(key.as_int() as i32)
-                    .unwrap();
-                // let live_event = LiveEvent::Midi {
-                //     channel: u4::new(voice as u8),
-                //     message: MidiMessage::NoteOn { key, vel },
-                // };
-                // buf.clear();
-                // live_event.write_std(&mut buf).unwrap();
-                // conn_out.send(&buf).unwrap();
-            }
+fn start_song_index(
+    mut sampler: RefMut<Sampler>,
+    song: &Song,
+    voices: &HashSet<usize>,
+    song_index: usize,
+) {
+    let Some(slice) = &song.slices.get(song_index) else {
+        return;
+    };
+    for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
+        if !voices.contains(&voice) {
+            continue;
         }
-
-        gloo::timers::future::TimeoutFuture::new(1000).await;
-        // thread::sleep(Duration::from_secs(1));
-
-        for (_voice, notes) in slice.notes_by_voice.iter().enumerate() {
-            for (&key, _) in notes.iter() {
-                sampler.borrow_mut().stop_note(key.as_int() as i32).unwrap();
-
-                // let live_event = LiveEvent::Midi {
-                //     channel: u4::new(voice as u8),
-                //     message: MidiMessage::NoteOff {
-                //         key,
-                //         vel: u7::new(0),
-                //     },
-                // };
-                // buf.clear();
-                // live_event.write_std(&mut buf).unwrap();
-                // conn_out.send(&buf).unwrap();
-            }
-        }
-
-        gloo::timers::future::TimeoutFuture::new(1000).await;
-        // thread::sleep(Duration::from_secs(1));
-    }
-}
-
-#[derive(Clone)]
-struct Song {
-    voices: usize,
-    slices: Vec<TimeSlice>,
-}
-
-impl Song {
-    fn from_smf(smf: &Smf) -> Self {
-        let mut voice_keys = HashSet::new();
-
-        // Put all messages into a single vec sorted by position
-        // Keep track of everything turned on so far. Maybe just clone the notes vec when time advances and apply changes to the latest vec.
-        struct VoiceAndMessage {
-            /// Track and channel
-            voice_key: (usize, u4),
-            message: MidiMessage,
-        }
-
-        // Make sure the song starts at 0
-        let mut messages_by_position = HashMap::from([(0, Vec::new())]);
-
-        for (track_idx, track) in smf.tracks.iter().enumerate() {
-            let mut position = 0;
-            for event in track {
-                position += event.delta.as_int();
-                let TrackEventKind::Midi { channel, message } = event.kind else {
-                    continue;
-                };
-                let voice_key = (track_idx, channel);
-                voice_keys.insert(voice_key);
-
-                messages_by_position
-                    .entry(position)
-                    .or_insert_with(Vec::new)
-                    .push(VoiceAndMessage { voice_key, message })
-            }
-        }
-
-        let voice_by_key = voice_keys
-            .into_iter()
-            .sorted()
-            .enumerate()
-            .map(|(idx, key)| (key, idx))
-            .collect::<HashMap<_, _>>();
-
-        let mut current_slice = TimeSlice::empty(voice_by_key.len());
-        let slices = messages_by_position
-            .keys()
-            .sorted()
-            .map(|position| {
-                for message in messages_by_position[position].iter() {
-                    let notes_current_voice = current_slice
-                        .notes_by_voice
-                        .get_mut(voice_by_key[&message.voice_key])
-                        .unwrap();
-                    match message.message {
-                        MidiMessage::NoteOn { key, vel } => {
-                            if vel > 0 {
-                                notes_current_voice.insert(key, vel);
-                            } else {
-                                notes_current_voice.remove(&key);
-                            }
-                        }
-                        MidiMessage::NoteOff { key, .. } => {
-                            // TODO - use vel?
-                            notes_current_voice.remove(&key);
-                        }
-                        _ => {}
-                    }
-                }
-                current_slice.clone()
-            })
-            .collect();
-
-        Self {
-            voices: voice_by_key.len(),
-            slices,
+        for (&key, _) in notes.iter() {
+            sampler.start_note(key.as_int() as i32).unwrap();
         }
     }
 }
 
-#[derive(Clone)]
-struct TimeSlice {
-    notes_by_voice: Vec<HashMap<u7, u7>>,
-}
-
-impl TimeSlice {
-    fn empty(num_voices: usize) -> Self {
-        Self {
-            notes_by_voice: vec![HashMap::default(); num_voices],
+fn stop_song_index(
+    mut sampler: RefMut<Sampler>,
+    song: &Song,
+    voices: &HashSet<usize>,
+    song_index: usize,
+) {
+    let Some(slice) = &song.slices.get(song_index) else {
+        return;
+    };
+    for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
+        if !voices.contains(&voice) {
+            continue;
+        }
+        for (&key, _) in notes.iter() {
+            sampler.stop_note(key.as_int() as i32).unwrap();
         }
     }
 }
