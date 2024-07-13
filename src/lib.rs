@@ -1,5 +1,6 @@
 use crate::sampler::Sampler;
 use gloo::events::{EventListener, EventListenerOptions};
+use gloo::net::http::Request;
 use gloo::utils::document;
 use log::{error, info};
 use midly::Smf;
@@ -38,32 +39,41 @@ pub async fn start() {
     let state = {
         let sampler = Sampler::new(AudioContext::new().unwrap(), &NOTES).await;
 
-        let data = include_bytes!("../examples/A Million Stars.mid");
+        let data = Request::get("examples/Mam'selle.mid")
+            .send()
+            .await
+            .unwrap()
+            .binary()
+            .await
+            .unwrap();
         let midi_file =
-            Smf::parse(data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
+            Smf::parse(&data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
         let song = Song::from_smf(&midi_file);
         let voices = get_voices(&song);
+
         Rc::new(State {
             sampler: RefCell::new(sampler),
             song,
             voices,
         })
     };
-    let state2 = state.clone();
 
     EventListener::new_with_options(
         &document(),
         "keydown",
         EventListenerOptions::enable_prevent_default(),
-        move |event| {
-            if let Some(song_index) = event_to_song_index(event) {
-                let state = &state;
-                start_song_index(
-                    state.sampler.borrow_mut(),
-                    &state.song,
-                    &state.voices,
-                    song_index,
-                );
+        {
+            // Binding for the closure
+            let state = state.clone();
+            move |event| {
+                if let Some(song_index) = event_to_song_index(event) {
+                    start_song_index(
+                        state.sampler.borrow_mut(),
+                        &state.song,
+                        &state.voices,
+                        song_index,
+                    );
+                }
             }
         },
     )
@@ -73,15 +83,18 @@ pub async fn start() {
         &document(),
         "keyup",
         EventListenerOptions::enable_prevent_default(),
-        move |event| {
-            if let Some(song_index) = event_to_song_index(event) {
-                let state = &state2;
-                stop_song_index(
-                    state.sampler.borrow_mut(),
-                    &state.song,
-                    &state.voices,
-                    song_index,
-                );
+        {
+            // Binding for the closure, no need to clone
+            let state = state;
+            move |event| {
+                if let Some(song_index) = event_to_song_index(event) {
+                    stop_song_index(
+                        state.sampler.borrow_mut(),
+                        &state.song,
+                        &state.voices,
+                        song_index,
+                    );
+                }
             }
         },
     )
@@ -124,13 +137,12 @@ const NOTES: [(&str, &str); 30] = [
 ];
 
 fn get_voices(song: &Song) -> HashSet<usize> {
-    (0..song.voices).into_iter().collect()
+    (0..song.voices).collect()
 }
 
 fn event_to_song_index(event: &Event) -> Option<usize> {
     let event = event.dyn_ref::<KeyboardEvent>().unwrap();
 
-    // info!("{} | {}", event.key(), event.repeat());
     let has_modifier = event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
     if has_modifier {
         return None;

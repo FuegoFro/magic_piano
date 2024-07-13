@@ -17,5 +17,14 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - Data format is maybe... something like lilypond? Ideally some existing, open source thing. It does look like that can be converted into MIDI. Maybe just MIDI then? What is MusicXML and would it be useful here?
 - Thinking of a web app, maybe fully in Rust?
 
-# Initial experiements
-- Use midly and midir to parse a MIDI and play it one interaction point at a time.
+# Todo
+- [x] Use midly and midir to parse a MIDI and play it one interaction point at a time.
+- [ ] Volume/mute/solo controls for each voice
+- [ ] Better loading, loading indicators
+- [ ] Handle race where notes get stuck "on"
+- [ ] Upload music files, not hard coded
+- [ ] Work from MusicXML
+- [ ] Actually render the sheet music
+  - [ ] Show current (most recent) position
+  - [ ] Grey out notes for muted voices
+- [ ] Various web accoutrements (favicon, title, ...metadata?)

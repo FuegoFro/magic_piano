@@ -10,11 +10,9 @@ cd "${DIR}"
 #wasm-pack build --target web
 
 rm -rf build
-mkdir -p build/examples
-cp index.html build/
-cp -r pkg/ build/
+mkdir -p build/
+cp -r index.html examples/ pkg/ build/
 rm build/pkg/.gitignore
-cp 'examples/A Million Stars.png' 'examples/A Million Stars.mid' build/examples/
 
 DEPLOY_URL="git@github.com:FuegoFro/magic_piano.git"
 
