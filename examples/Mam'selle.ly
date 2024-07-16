@@ -75,12 +75,14 @@ extraLyrics = \lyricmode {
         \key g \major
         <<
           \new Voice = "tenor" {
+            \set midiInstrument = #"tenor"
             \voiceOne
 %            \override NoteColumn.force-hshift = #1.7
             \tenorMusic
           }
           \new Voice = "lead" {
             <<
+            \set midiInstrument = #"lead"
             \voiceTwo
             \leadMusic
             >>
@@ -97,12 +99,14 @@ extraLyrics = \lyricmode {
         \key g \major
         <<
           \new Voice = "bari" {
+            \set midiInstrument = #"bari"
             \voiceOne
 %            \override NoteColumn.force-hshift = #1.7
             \bariMusic
 
           }
           \new Voice = "bass" {
+            \set midiInstrument = #"bass"
             \voiceTwo
             \bassMusic
           }
@@ -132,7 +136,7 @@ extraLyrics = \lyricmode {
     \midi {
       \tempo 4 = 120
       \context {
-        \Score midiChannelMapping = #'voice
+        \Score midiChannelMapping = #'instrument
       }
     }
   } % score

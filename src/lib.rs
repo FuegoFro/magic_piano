@@ -34,7 +34,7 @@ pub async fn start() {
     struct State {
         sampler: RefCell<Sampler>,
         song: Song,
-        voices: HashSet<usize>,
+        voices: RefCell<HashSet<usize>>,
     }
     let state = {
         let sampler = Sampler::new(AudioContext::new().unwrap(), &NOTES).await;
@@ -49,12 +49,16 @@ pub async fn start() {
         let midi_file =
             Smf::parse(&data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
         let song = Song::from_smf(&midi_file);
+        for slice in song.slices.iter() {
+            info!("{:?}", slice.notes_by_voice);
+        }
+
         let voices = get_voices(&song);
 
         Rc::new(State {
             sampler: RefCell::new(sampler),
             song,
-            voices,
+            voices: RefCell::new(voices),
         })
     };
 
@@ -70,7 +74,7 @@ pub async fn start() {
                     start_song_index(
                         state.sampler.borrow_mut(),
                         &state.song,
-                        &state.voices,
+                        &state.voices.borrow(),
                         song_index,
                     );
                 }
@@ -84,14 +88,14 @@ pub async fn start() {
         "keyup",
         EventListenerOptions::enable_prevent_default(),
         {
-            // Binding for the closure, no need to clone
-            let state = state;
+            // Binding for the closure
+            let state = state.clone();
             move |event| {
                 if let Some(song_index) = event_to_song_index(event) {
                     stop_song_index(
                         state.sampler.borrow_mut(),
                         &state.song,
-                        &state.voices,
+                        &state.voices.borrow(),
                         song_index,
                     );
                 }
@@ -100,7 +104,24 @@ pub async fn start() {
     )
     .forget();
 
-    info!("Hello world 2");
+    for (idx, id) in ["toggle_tenor", "toggle_lead", "toggle_bari", "toggle_bass"]
+        .into_iter()
+        .enumerate()
+    {
+        EventListener::new(&document().get_element_by_id(id).unwrap(), "click", {
+            // Binding for the closure
+            let state = state.clone();
+            move |_| {
+                let mut voices = state.voices.borrow_mut();
+                if voices.contains(&idx) {
+                    voices.remove(&idx);
+                } else {
+                    voices.insert(idx);
+                }
+            }
+        })
+        .forget();
+    }
 }
 
 const NOTES: [(&str, &str); 30] = [
@@ -148,7 +169,8 @@ fn event_to_song_index(event: &Event) -> Option<usize> {
         return None;
     }
 
-    let song_index = "qwerasdfzxcvuiopjkl;m,./".find(event.key().as_str())?;
+    // let song_index = "qwerasdfzxcvuiopjkl;m,./".find(event.key().as_str())?;
+    let song_index = "qwertyuiopasdfghjkl;zxcvbnm,./".find(event.key().as_str())?;
 
     event.prevent_default();
 
