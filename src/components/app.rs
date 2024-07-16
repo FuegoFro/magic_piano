@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use gloo::net::http::Request;
 use itertools::Itertools;
 use leptos::{
@@ -5,8 +7,8 @@ use leptos::{
     window_event_listener, with, CollectView, IntoView, RwSignal, Show, Signal, SignalGet,
     SignalGetUntracked, SignalSet, SignalUpdate, SignalWith,
 };
+use log::debug;
 use midly::Smf;
-use std::collections::HashSet;
 use web_sys::AudioContext;
 
 use crate::components::voice_control::VoiceControl;
@@ -14,7 +16,7 @@ use crate::sampler::Sampler;
 use crate::song::Song;
 use crate::{event_to_song_index, start_song_index, stop_song_index, NOTES};
 
-const SONGS: [&str; 2] = ["A Million Stars", "Mam'selle"];
+const SONGS: &[&str] = &["A Million Stars", "Lone Prairie", "Mam'selle"];
 
 #[derive(Clone)]
 struct VoiceState {
@@ -35,7 +37,7 @@ impl VoiceState {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (song_name, set_song_name) = create_signal(SONGS[0].to_string());
+    let (song_name, set_song_name) = create_signal(SONGS[1].to_string());
     let sampler = create_local_resource(
         || (),
         |_| async move { Sampler::initialize(AudioContext::new().unwrap(), &NOTES).await },
@@ -53,7 +55,11 @@ pub fn App() -> impl IntoView {
                 .unwrap();
             let midi_file =
                 Smf::parse(&data).unwrap_or_else(|e| std::panic!("Unable to parse midi file: {e}"));
-            Song::from_smf(&midi_file)
+            let song_data = Song::from_smf(&midi_file);
+            for slice in song_data.slices.iter() {
+                debug!("Slice: {:?}", slice.notes_by_voice);
+            }
+            song_data
         },
     );
 

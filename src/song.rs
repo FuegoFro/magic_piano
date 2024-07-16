@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use log::debug;
 use midly::num::{u4, u7};
 use midly::{MidiMessage, Smf, TrackEventKind};
 use std::collections::{HashMap, HashSet};
@@ -13,6 +14,8 @@ pub struct Song {
 
 impl Song {
     pub fn from_smf(smf: &Smf) -> Self {
+        debug!("---- Starting from_smf ----");
+
         let mut voice_keys = HashSet::new();
 
         // Put all messages into a single vec sorted by position
@@ -33,6 +36,12 @@ impl Song {
                 let TrackEventKind::Midi { channel, message } = event.kind else {
                     continue;
                 };
+                if matches!(
+                    message,
+                    MidiMessage::NoteOn { .. } | MidiMessage::NoteOff { .. },
+                ) {
+                    debug!("({}, {}) @ {}: {:?}", track_idx, channel, position, message);
+                }
                 let voice_key = (track_idx, channel);
                 voice_keys.insert(voice_key);
 
@@ -49,6 +58,26 @@ impl Song {
             .enumerate()
             .map(|(idx, key)| (key, idx))
             .collect::<HashMap<_, _>>();
+
+        // Some midi generators (eg MuseScore) have the "note off" happen one tick before the
+        // next "note on", so we bump those to change/happen at the same time.
+        let positions_to_bump = messages_by_position
+            .keys()
+            .sorted()
+            .tuple_windows()
+            .filter(|(pos, next)| {
+                // TODO - Also check to make sure it's only NoteOff messages?
+                *pos + 1 == **next
+            })
+            .map(|(pos, _)| *pos)
+            .collect_vec();
+        for pos in positions_to_bump {
+            let mut removed = messages_by_position.remove(&pos).unwrap();
+            messages_by_position
+                .get_mut(&(pos + 1))
+                .unwrap()
+                .append(&mut removed);
+        }
 
         let mut current_slice = TimeSlice::empty(voice_by_key.len());
         let slices = messages_by_position
