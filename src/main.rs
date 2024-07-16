@@ -56,10 +56,6 @@ const NOTES: [(&str, &str); 30] = [
     ("C8", "https://tonejs.github.io/audio/salamander/C8.mp3"),
 ];
 
-fn get_voices(song: &Song) -> HashSet<usize> {
-    (0..song.voices).collect()
-}
-
 fn event_to_song_index(event: &Event) -> Option<usize> {
     let event = event.dyn_ref::<KeyboardEvent>().unwrap();
 

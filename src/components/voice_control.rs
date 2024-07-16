@@ -26,8 +26,8 @@ pub fn VoiceControl(
                     Solo
                 </button>
             </div>
-            <p>"Volume (doesn't work)"</p>
-            <input type="range"/>
+            // <p>"Volume (doesn't work)"</p>
+            // <input type="range"/>
         </div>
     }
 }

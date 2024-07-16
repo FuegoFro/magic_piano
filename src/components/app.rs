@@ -86,7 +86,7 @@ pub fn App() -> impl IntoView {
                 let Some(song_data) = song_data else { return };
                 sampler.update(|sampler| {
                     let Some(sampler) = sampler else { return };
-                    start_song_index(sampler, &song_data, voices_hash, song_index);
+                    start_song_index(sampler, song_data, voices_hash, song_index);
                 })
             });
         }
@@ -99,7 +99,7 @@ pub fn App() -> impl IntoView {
                 let Some(song_data) = song_data else { return };
                 sampler.update(|sampler| {
                     let Some(sampler) = sampler else { return };
-                    stop_song_index(sampler, &song_data, voices_hash, song_index);
+                    stop_song_index(sampler, song_data, voices_hash, song_index);
                 })
             });
         }
@@ -108,6 +108,10 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="flex flex-col items-start p-2 space-y-1 h-screen">
+            <h1 class="text-xl">Controls</h1>
+            <p>"Each key on your keyboard represents an absolute position in a song. "<code class="bg-slate-200">Q</code>" is the first position, "<code class="bg-slate-200">W</code>", the second, and so on."</p>
+            <p>"The keys are "<code class="bg-slate-200">Q</code>" through "<code class="bg-slate-200">P</code>", then "<code class="bg-slate-200">A</code>" through "<code class="bg-slate-200">;</code>", and then "<code class="bg-slate-200">Z</code>" through "<code class="bg-slate-200">/</code>.</p>
+            <br/>
             <div class="flex flex-row items-baseline space-x-1">
                 <p>"Pick a song:"</p>
                 <select

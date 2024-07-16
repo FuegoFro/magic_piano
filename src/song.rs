@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
 pub struct Song {
+    // TODO - Use this when constructing voice states
+    #[allow(dead_code)]
     pub voices: usize,
     pub slices: Vec<TimeSlice>,
 }
