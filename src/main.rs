@@ -9,16 +9,19 @@ use std::cell::{RefCell, RefMut};
 use std::collections::HashSet;
 use std::panic;
 use std::rc::Rc;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
 use watchreload::start_reload_listener;
 use web_sys::{AudioContext, Event, KeyboardEvent};
 
 mod sampler;
 mod song;
 
-#[wasm_bindgen]
-pub async fn start() {
+fn main() {
+    spawn_local(main_async())
+}
+
+async fn main_async() {
     console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     match start_reload_listener() {
