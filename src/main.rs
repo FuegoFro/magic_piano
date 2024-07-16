@@ -1,8 +1,10 @@
+use crate::components::app::App;
 use crate::sampler::Sampler;
 use gloo::events::{EventListener, EventListenerOptions};
 use gloo::net::http::Request;
 use gloo::utils::document;
-use log::{error, info};
+use leptos::{mount_to_body, view};
+use log::info;
 use midly::Smf;
 use song::Song;
 use std::cell::{RefCell, RefMut};
@@ -11,28 +13,21 @@ use std::panic;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use watchreload::start_reload_listener;
 use web_sys::{AudioContext, Event, KeyboardEvent};
 
+mod components;
 mod sampler;
 mod song;
 
 fn main() {
+    console_log::init_with_level(log::Level::Debug).unwrap();
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+
     spawn_local(main_async())
 }
 
 async fn main_async() {
-    console_log::init_with_level(log::Level::Debug).unwrap();
-    panic::set_hook(Box::new(console_error_panic_hook::hook));
-    match start_reload_listener() {
-        Ok(true) => {
-            info!("Reload listener started.");
-        }
-        Ok(false) => (),
-        Err(e) => {
-            error!("Could not start reload listener: {:?}", e);
-        }
-    }
+    mount_to_body(|| view! { <App/> });
 
     struct State {
         sampler: RefCell<Sampler>,
@@ -107,24 +102,24 @@ async fn main_async() {
     )
     .forget();
 
-    for (idx, id) in ["toggle_tenor", "toggle_lead", "toggle_bari", "toggle_bass"]
-        .into_iter()
-        .enumerate()
-    {
-        EventListener::new(&document().get_element_by_id(id).unwrap(), "click", {
-            // Binding for the closure
-            let state = state.clone();
-            move |_| {
-                let mut voices = state.voices.borrow_mut();
-                if voices.contains(&idx) {
-                    voices.remove(&idx);
-                } else {
-                    voices.insert(idx);
-                }
-            }
-        })
-        .forget();
-    }
+    // for (idx, id) in ["toggle_tenor", "toggle_lead", "toggle_bari", "toggle_bass"]
+    //     .into_iter()
+    //     .enumerate()
+    // {
+    //     EventListener::new(&document().get_element_by_id(id).unwrap(), "click", {
+    //         // Binding for the closure
+    //         let state = state.clone();
+    //         move |_| {
+    //             let mut voices = state.voices.borrow_mut();
+    //             if voices.contains(&idx) {
+    //                 voices.remove(&idx);
+    //             } else {
+    //                 voices.insert(idx);
+    //             }
+    //         }
+    //     })
+    //     .forget();
+    // }
 }
 
 const NOTES: [(&str, &str); 30] = [
