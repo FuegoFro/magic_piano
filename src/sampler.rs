@@ -20,7 +20,7 @@ pub struct Sampler {
 impl Sampler {
     /// * `urls`: A series of (note_name, url) pairs
     // fn new(urls: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>) -> Self {
-    pub async fn new(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
+    pub async fn initialize(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
         let ctx_ref = &ctx;
         let buffers = stream::iter(urls.iter())
             .then(|(note_name, url)| async move {

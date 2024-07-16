@@ -1,19 +1,14 @@
-use crate::components::app::App;
-use crate::sampler::Sampler;
-use gloo::events::{EventListener, EventListenerOptions};
-use gloo::net::http::Request;
-use gloo::utils::document;
-use leptos::{mount_to_body, view};
-use log::info;
-use midly::Smf;
-use song::Song;
-use std::cell::{RefCell, RefMut};
 use std::collections::HashSet;
 use std::panic;
-use std::rc::Rc;
+
+use leptos::{mount_to_body, view};
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::{AudioContext, Event, KeyboardEvent};
+use web_sys::{Event, KeyboardEvent};
+
+use song::Song;
+
+use crate::components::app::App;
+use crate::sampler::Sampler;
 
 mod components;
 mod sampler;
@@ -23,104 +18,10 @@ fn main() {
     console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    spawn_local(main_async())
-}
-
-async fn main_async() {
     mount_to_body(|| view! { <App/> });
-
-    struct State {
-        sampler: RefCell<Sampler>,
-        song: Song,
-        voices: RefCell<HashSet<usize>>,
-    }
-    let state = {
-        let sampler = Sampler::new(AudioContext::new().unwrap(), &NOTES).await;
-
-        let data = Request::get("examples/Mam'selle.mid")
-            .send()
-            .await
-            .unwrap()
-            .binary()
-            .await
-            .unwrap();
-        let midi_file =
-            Smf::parse(&data).unwrap_or_else(|e| panic!("Unable to parse midi file: {e}"));
-        let song = Song::from_smf(&midi_file);
-        for slice in song.slices.iter() {
-            info!("{:?}", slice.notes_by_voice);
-        }
-
-        let voices = get_voices(&song);
-
-        Rc::new(State {
-            sampler: RefCell::new(sampler),
-            song,
-            voices: RefCell::new(voices),
-        })
-    };
-
-    EventListener::new_with_options(
-        &document(),
-        "keydown",
-        EventListenerOptions::enable_prevent_default(),
-        {
-            // Binding for the closure
-            let state = state.clone();
-            move |event| {
-                if let Some(song_index) = event_to_song_index(event) {
-                    start_song_index(
-                        state.sampler.borrow_mut(),
-                        &state.song,
-                        &state.voices.borrow(),
-                        song_index,
-                    );
-                }
-            }
-        },
-    )
-    .forget();
-
-    EventListener::new_with_options(
-        &document(),
-        "keyup",
-        EventListenerOptions::enable_prevent_default(),
-        {
-            // Binding for the closure
-            let state = state.clone();
-            move |event| {
-                if let Some(song_index) = event_to_song_index(event) {
-                    stop_song_index(
-                        state.sampler.borrow_mut(),
-                        &state.song,
-                        &state.voices.borrow(),
-                        song_index,
-                    );
-                }
-            }
-        },
-    )
-    .forget();
-
-    // for (idx, id) in ["toggle_tenor", "toggle_lead", "toggle_bari", "toggle_bass"]
-    //     .into_iter()
-    //     .enumerate()
-    // {
-    //     EventListener::new(&document().get_element_by_id(id).unwrap(), "click", {
-    //         // Binding for the closure
-    //         let state = state.clone();
-    //         move |_| {
-    //             let mut voices = state.voices.borrow_mut();
-    //             if voices.contains(&idx) {
-    //                 voices.remove(&idx);
-    //             } else {
-    //                 voices.insert(idx);
-    //             }
-    //         }
-    //     })
-    //     .forget();
-    // }
 }
+
+// TODO - Rearrange files
 
 const NOTES: [(&str, &str); 30] = [
     ("A0", "https://tonejs.github.io/audio/salamander/A0.mp3"),
@@ -181,7 +82,7 @@ fn event_to_song_index(event: &Event) -> Option<usize> {
 }
 
 fn start_song_index(
-    mut sampler: RefMut<Sampler>,
+    sampler: &mut Sampler,
     song: &Song,
     voices: &HashSet<usize>,
     song_index: usize,
@@ -199,12 +100,7 @@ fn start_song_index(
     }
 }
 
-fn stop_song_index(
-    mut sampler: RefMut<Sampler>,
-    song: &Song,
-    voices: &HashSet<usize>,
-    song_index: usize,
-) {
+fn stop_song_index(sampler: &mut Sampler, song: &Song, voices: &HashSet<usize>, song_index: usize) {
     let Some(slice) = &song.slices.get(song_index) else {
         return;
     };
