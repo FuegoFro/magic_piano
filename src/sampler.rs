@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use futures::{stream, StreamExt};
+use futures::future::join_all;
 use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::Uint8Array;
@@ -22,18 +22,19 @@ impl Sampler {
     // fn new(urls: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>) -> Self {
     pub async fn initialize(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
         let ctx_ref = &ctx;
-        let buffers = stream::iter(urls.iter())
-            .then(|(note_name, url)| async move {
-                (
-                    note_name_to_midi_note(note_name)
-                        .unwrap_or_else(|| panic!("Malformed note name {note_name}")),
-                    url_to_audio_buffer(ctx_ref, url)
-                        .await
-                        .unwrap_or_else(|e| panic!("Unable to fetch sample at {url}: {e:?}")),
-                )
-            })
-            .collect::<BTreeMap<_, _>>()
-            .await;
+        let buffer_futures = urls.iter().map(|(note_name, url)| async move {
+            (
+                note_name_to_midi_note(note_name)
+                    .unwrap_or_else(|| panic!("Malformed note name {note_name}")),
+                url_to_audio_buffer(ctx_ref, url)
+                    .await
+                    .unwrap_or_else(|e| panic!("Unable to fetch sample at {url}: {e:?}")),
+            )
+        });
+        let buffers = join_all(buffer_futures)
+            .await
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
 
         Self {
             ctx,

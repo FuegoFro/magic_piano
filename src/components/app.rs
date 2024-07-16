@@ -5,7 +5,7 @@ use itertools::Itertools;
 use leptos::{
     component, create_local_resource, create_signal, ev, event_target_value, on_cleanup, view,
     window_event_listener, with, CollectView, IntoView, RwSignal, Show, Signal, SignalGet,
-    SignalGetUntracked, SignalSet, SignalUpdate, SignalWith,
+    SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
 use log::debug;
 use midly::Smf;
@@ -115,8 +115,18 @@ pub fn App() -> impl IntoView {
     view! {
         <div class="flex flex-col items-start p-2 space-y-1 h-screen">
             <h1 class="text-xl">Controls</h1>
-            <p>"Each key on your keyboard represents an absolute position in a song. "<code class="bg-slate-200">Q</code>" is the first position, "<code class="bg-slate-200">W</code>", the second, and so on."</p>
-            <p>"The keys are "<code class="bg-slate-200">Q</code>" through "<code class="bg-slate-200">P</code>", then "<code class="bg-slate-200">A</code>" through "<code class="bg-slate-200">;</code>", and then "<code class="bg-slate-200">Z</code>" through "<code class="bg-slate-200">/</code>.</p>
+            <p>
+                "Each key on your keyboard represents an absolute position in a song. "
+                <code class="bg-slate-200">Q</code> " is the first position, "
+                <code class="bg-slate-200">W</code> ", the second, and so on."
+            </p>
+            <p>
+                "The keys are " <code class="bg-slate-200">Q</code> " through "
+                <code class="bg-slate-200">P</code> ", then " <code class="bg-slate-200">A</code>
+                " through " <code class="bg-slate-200">;</code> ", and then "
+                <code class="bg-slate-200">Z</code> " through " <code class="bg-slate-200">/</code>
+                .
+            </p>
             <br/>
             <div class="flex flex-row items-baseline space-x-1">
                 <p>"Pick a song:"</p>
@@ -128,14 +138,20 @@ pub fn App() -> impl IntoView {
                     }
                 >
 
+                    // Apparently the API for initial selection is adding `selected`
+                    // to the corresponding option >.>
+                    // Also if this comment is inside the following block leptosfmt loses its mind
                     {SONGS
                         .iter()
-                        .map(|song_option| {
-                            view! {
-                                // Need this lambda with to_string because otherwise the *stylers* macro parser chokes (?!?!?!)
-                                <option value=move || {
-                                    song_option.to_string()
-                                }>{*song_option}</option>
+                        .map(|&song_option| {
+                            if song_name.with_untracked(|sn| sn == song_option) {
+                                view! {
+                                    <option selected value=song_option>
+                                        {song_option}
+                                    </option>
+                                }
+                            } else {
+                                view! { <option value=song_option>{song_option}</option> }
                             }
                         })
                         .collect_view()}
@@ -175,6 +191,7 @@ pub fn App() -> impl IntoView {
                     }
                 }
             >
+
                 <img src=move || format!("examples/{}.png", song_name.get())/>
             </Show>
         </div>
