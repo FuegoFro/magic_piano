@@ -1,20 +1,53 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use futures::future::join_all;
 use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::Uint8Array;
+use log::error;
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode};
 
+/// Holds onto the playback nodes that were started by the `Sampler` allowing you to stop them
+/// before they reach the end of the sample.
+///
+/// Dropping the object will stop the playback.
+// TODO - If we need to get around this behavior we can add a `.forget()`.
+pub struct SamplerPlaybackGuard {
+    ctx: AudioContext,
+    buffer_source: AudioBufferSourceNode,
+    gain: GainNode,
+}
+
+impl SamplerPlaybackGuard {
+    fn stop_playback(&self) -> Result<(), JsValue> {
+        let current_time = self.ctx.current_time();
+        let end_time = current_time + 1.0;
+        self.gain.gain().set_value_at_time(1.0, current_time)?;
+        self.gain
+            .gain()
+            .linear_ramp_to_value_at_time(0.0, end_time)?;
+        self.buffer_source.stop_with_when(end_time)?;
+
+        Ok(())
+    }
+}
+
+impl Drop for SamplerPlaybackGuard {
+    fn drop(&mut self) {
+        if let Err(e) = self.stop_playback() {
+            error!("Failed to stop playback: {e:?}");
+        }
+    }
+}
+
 /// Heavily inspired by https://tonejs.github.io/docs/latest/classes/Sampler
 pub struct Sampler {
     ctx: AudioContext,
     buffers: BTreeMap<i32, AudioBuffer>,
-    active_notes: HashMap<i32, (AudioBufferSourceNode, GainNode)>,
 }
 
 impl Sampler {
@@ -36,14 +69,10 @@ impl Sampler {
             .into_iter()
             .collect::<BTreeMap<_, _>>();
 
-        Self {
-            ctx,
-            buffers,
-            active_notes: Default::default(),
-        }
+        Self { ctx, buffers }
     }
 
-    pub fn start_note(&mut self, midi_note: i32) -> Result<(), JsValue> {
+    pub fn start_note(&self, midi_note: i32) -> Result<SamplerPlaybackGuard, JsValue> {
         // Find closest note
         let above = self.buffers.range(midi_note..).next();
         let below = self.buffers.range(..=midi_note).last();
@@ -71,21 +100,12 @@ impl Sampler {
         gain.connect_with_audio_node(&self.ctx.destination())?;
 
         buffer_source.start()?;
-        self.active_notes.insert(midi_note, (buffer_source, gain));
 
-        Ok(())
-    }
-
-    pub fn stop_note(&mut self, midi_note: i32) -> Result<(), JsValue> {
-        if let Some((buffer_source, gain)) = self.active_notes.remove(&midi_note) {
-            let current_time = self.ctx.current_time();
-            let end_time = current_time + 1.0;
-            gain.gain().set_value_at_time(1.0, current_time)?;
-            gain.gain().linear_ramp_to_value_at_time(0.0, end_time)?;
-            buffer_source.stop_with_when(end_time)?;
-        }
-
-        Ok(())
+        Ok(SamplerPlaybackGuard {
+            ctx: self.ctx.clone(),
+            buffer_source,
+            gain,
+        })
     }
 }
 

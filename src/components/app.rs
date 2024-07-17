@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use gloo::net::http::Request;
 use itertools::Itertools;
@@ -12,9 +12,9 @@ use midly::Smf;
 use web_sys::AudioContext;
 
 use crate::components::voice_control::VoiceControl;
-use crate::sampler::Sampler;
+use crate::sampler::{Sampler, SamplerPlaybackGuard};
 use crate::song::Song;
-use crate::{event_to_song_index, start_song_index, stop_song_index, NOTES};
+use crate::{event_to_song_index, start_song_index, NOTES};
 
 const SONGS: &[&str] = &["A Million Stars", "Lone Prairie", "Mam'selle"];
 
@@ -42,6 +42,8 @@ pub fn App() -> impl IntoView {
         || (),
         |_| async move { Sampler::initialize(AudioContext::new().unwrap(), &NOTES).await },
     );
+    let (_, set_held_notes) =
+        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
 
     let song_data = create_local_resource(
         move || song_name.get(),
@@ -86,29 +88,35 @@ pub fn App() -> impl IntoView {
         })
     });
 
-    let keydown_handle = window_event_listener(ev::keydown, move |e| {
-        if let Some(song_index) = event_to_song_index(&e) {
+    let keydown_handle = window_event_listener(ev::keydown, move |event| {
+        let key = event.key();
+        if let Some(song_index) = event_to_song_index(event) {
             with!(|song_data, voices_hash| {
                 let Some(song_data) = song_data else { return };
                 sampler.update(|sampler| {
                     let Some(sampler) = sampler else { return };
-                    start_song_index(sampler, song_data, voices_hash, song_index);
+                    set_held_notes.update(|held_notes| {
+                        held_notes.insert(
+                            key,
+                            start_song_index(sampler, song_data, voices_hash, song_index),
+                        );
+                    });
                 })
             });
         }
     });
     on_cleanup(move || keydown_handle.remove());
 
-    let keyup_handle = window_event_listener(ev::keyup, move |e| {
-        if let Some(song_index) = event_to_song_index(&e) {
-            with!(|song_data, voices_hash| {
-                let Some(song_data) = song_data else { return };
-                sampler.update(|sampler| {
-                    let Some(sampler) = sampler else { return };
-                    stop_song_index(sampler, song_data, voices_hash, song_index);
-                })
-            });
+    let keyup_handle = window_event_listener(ev::keyup, move |event| {
+        let has_modifier =
+            event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
+        if has_modifier {
+            return;
         }
+
+        set_held_notes.update(|held_notes| {
+            held_notes.remove(&event.key());
+        });
     });
     on_cleanup(move || keyup_handle.remove());
 

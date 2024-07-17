@@ -20,10 +20,10 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 # Todo
 - [x] Use midly and midir to parse a MIDI and play it one interaction point at a time.
 - [ ] Volume/mute/solo controls for each voice
-- [ ] Better loading, loading indicators
-- [ ] Handle race where notes get stuck "on"
-- [ ] Upload music files, not hard coded
+- [x] Better loading, loading indicators
+- [x] Handle race where notes get stuck "on"
 - [ ] Work from MusicXML
+- [ ] Upload music files, not hard coded
 - [ ] Actually render the sheet music
   - [ ] Show current (most recent) position
   - [ ] Grey out notes for muted voices

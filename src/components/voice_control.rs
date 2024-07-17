@@ -9,7 +9,10 @@ pub fn VoiceControl(
     #[prop(into)] on_toggle_mute: Callback<()>,
     #[prop(into)] on_toggle_solo: Callback<()>,
 ) -> impl IntoView {
-    let muted = move || mute.get() || (!solo.get() && any_solo.get());
+    let muted = move || {
+        // (comment for formatting)
+        mute.get() || (!solo.get() && any_solo.get())
+    };
 
     view! {
         <div class="flex flex-col items-center p-4 border border-black border-solid rounded-sm">

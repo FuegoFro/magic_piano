@@ -2,13 +2,12 @@ use std::collections::HashSet;
 use std::panic;
 
 use leptos::{mount_to_body, view};
-use wasm_bindgen::JsCast;
-use web_sys::{Event, KeyboardEvent};
+use web_sys::KeyboardEvent;
 
 use song::Song;
 
 use crate::components::app::App;
-use crate::sampler::Sampler;
+use crate::sampler::{Sampler, SamplerPlaybackGuard};
 
 mod components;
 mod sampler;
@@ -56,9 +55,7 @@ const NOTES: [(&str, &str); 30] = [
     ("C8", "https://tonejs.github.io/audio/salamander/C8.mp3"),
 ];
 
-fn event_to_song_index(event: &Event) -> Option<usize> {
-    let event = event.dyn_ref::<KeyboardEvent>().unwrap();
-
+fn event_to_song_index(event: KeyboardEvent) -> Option<usize> {
     let has_modifier = event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
     if has_modifier {
         return None;
@@ -82,30 +79,19 @@ fn start_song_index(
     song: &Song,
     voices: &HashSet<usize>,
     song_index: usize,
-) {
+) -> Vec<SamplerPlaybackGuard> {
+    let mut sampler_playback_guards = Vec::new();
     let Some(slice) = &song.slices.get(song_index) else {
-        return;
+        return sampler_playback_guards;
     };
     for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
         if !voices.contains(&voice) {
             continue;
         }
         for (&key, _) in notes.iter() {
-            sampler.start_note(key.as_int() as i32).unwrap();
+            sampler_playback_guards.push(sampler.start_note(key.as_int() as i32).unwrap());
         }
     }
-}
 
-fn stop_song_index(sampler: &mut Sampler, song: &Song, voices: &HashSet<usize>, song_index: usize) {
-    let Some(slice) = &song.slices.get(song_index) else {
-        return;
-    };
-    for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
-        if !voices.contains(&voice) {
-            continue;
-        }
-        for (&key, _) in notes.iter() {
-            sampler.stop_note(key.as_int() as i32).unwrap();
-        }
-    }
+    sampler_playback_guards
 }
