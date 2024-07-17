@@ -47,6 +47,7 @@ impl Drop for SamplerPlaybackGuard {
 /// Heavily inspired by https://tonejs.github.io/docs/latest/classes/Sampler
 pub struct Sampler {
     ctx: AudioContext,
+    overall_gain: GainNode,
     buffers: BTreeMap<i32, AudioBuffer>,
 }
 
@@ -55,6 +56,9 @@ impl Sampler {
     // fn new(urls: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>) -> Self {
     pub async fn initialize(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
         let ctx_ref = &ctx;
+
+        let overall_gain = setup_overall_gain(ctx_ref).expect("Unable to create overall gain");
+
         let buffer_futures = urls.iter().map(|(note_name, url)| async move {
             (
                 note_name_to_midi_note(note_name)
@@ -69,7 +73,15 @@ impl Sampler {
             .into_iter()
             .collect::<BTreeMap<_, _>>();
 
-        Self { ctx, buffers }
+        Self {
+            ctx,
+            overall_gain,
+            buffers,
+        }
+    }
+
+    pub fn set_overall_gain(&self, overall_gain: f32) {
+        self.overall_gain.gain().set_value(overall_gain);
     }
 
     pub fn start_note(&self, midi_note: i32) -> Result<SamplerPlaybackGuard, JsValue> {
@@ -97,7 +109,7 @@ impl Sampler {
         gain.gain().set_value(1.0);
 
         buffer_source.connect_with_audio_node(&gain)?;
-        gain.connect_with_audio_node(&self.ctx.destination())?;
+        gain.connect_with_audio_node(&self.overall_gain)?;
 
         buffer_source.start()?;
 
@@ -107,6 +119,12 @@ impl Sampler {
             gain,
         })
     }
+}
+
+fn setup_overall_gain(ctx: &AudioContext) -> Result<GainNode, JsValue> {
+    let overall_gain = ctx.create_gain()?;
+    overall_gain.connect_with_audio_node(&ctx.destination())?;
+    Ok(overall_gain)
 }
 
 fn note_name_to_midi_note(note_name: &str) -> Option<i32> {

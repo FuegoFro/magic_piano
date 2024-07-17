@@ -38,9 +38,15 @@ impl VoiceState {
 #[component]
 pub fn App() -> impl IntoView {
     let (song_name, set_song_name) = create_signal(SONGS[1].to_string());
+    let (overall_volume, set_overall_volume) = create_signal(50u32);
+    let overall_gain = Signal::derive(move || overall_volume.get() as f32 / 100.0);
     let sampler = create_local_resource(
         || (),
-        |_| async move { Sampler::initialize(AudioContext::new().unwrap(), &NOTES).await },
+        move |_| async move {
+            let sampler = Sampler::initialize(AudioContext::new().unwrap(), &NOTES).await;
+            sampler.set_overall_gain(overall_gain.get_untracked());
+            sampler
+        },
     );
     let (_, set_held_notes) =
         create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
@@ -188,6 +194,17 @@ pub fn App() -> impl IntoView {
                         }
                     })
                     .collect_view()}
+            </div>
+            <div class="flex flex-row space-x-1">
+                <p>"Overall Volume:"</p>
+                <input
+                    type="range"
+                    max=100
+                    prop:value={overall_volume}
+                    on:input=move |e| {
+                        set_overall_volume.set(event_target_value(&e).parse().unwrap());
+                        sampler.with(|sampler| sampler.as_ref().map(|sampler| sampler.set_overall_gain(overall_gain.get())));
+                    }/>
             </div>
             <Show
                 when=move || !sampler.loading().get() && !song_data.loading().get()

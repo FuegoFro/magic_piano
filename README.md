@@ -27,4 +27,5 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [ ] Actually render the sheet music
   - [ ] Show current (most recent) position
   - [ ] Grey out notes for muted voices
+  - [ ] Render key to press above each note slice
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
