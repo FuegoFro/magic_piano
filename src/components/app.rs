@@ -1,55 +1,70 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
+use bit_set::BitSet;
 use gloo::net::http::Request;
 use itertools::Itertools;
 use leptos::{
-    component, create_local_resource, create_signal, ev, event_target_value, on_cleanup, view,
-    window_event_listener, with, CollectView, IntoView, RwSignal, Show, Signal, SignalGet,
+    component, create_effect, create_local_resource, create_signal, ev, event_target_value,
+    on_cleanup, view, window_event_listener, with, CollectView, IntoView, Show, Signal, SignalGet,
     SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
 use log::debug;
-use midly::Smf;
-use web_sys::AudioContext;
 
-use crate::components::voice_control::VoiceControl;
-use crate::sampler::{Sampler, SamplerPlaybackGuard};
-use crate::song::Song;
-use crate::{event_to_song_index, start_song_index, NOTES};
+use crate::components::voice_control::{VoiceControl, VoiceState};
+use crate::playback_manager::PlaybackManager;
+use crate::sampler::SamplerPlaybackGuard;
+use crate::song_data::SongData;
 
 const SONGS: &[&str] = &["A Million Stars", "Lone Prairie", "Mam'selle"];
 
-#[derive(Clone)]
-struct VoiceState {
-    name: String,
-    mute: RwSignal<bool>,
-    solo: RwSignal<bool>,
-}
-
-impl VoiceState {
-    fn new(name: String) -> Self {
-        Self {
-            name,
-            mute: RwSignal::new(false),
-            solo: RwSignal::new(false),
-        }
-    }
+/// Converts a 0-100 volume to a gain multiplier by interpolating between the given min/max
+/// relative decibel levels and then converting that to a multiplier. Min db should probably be
+/// around -60 to -90.
+/// Taken from https://www.reddit.com/r/programming/comments/9n2y0/stop_making_linear_volume_controls/
+fn volume_to_gain(volume: u32, min_db: f32, max_db: f32) -> f32 {
+    let factor = volume as f32 / 100.0;
+    let db = min_db + (max_db - min_db) * factor;
+    // The formula here is dB = 20*log10(Gn/G0)
+    // Where:
+    // - log10 is log base 10
+    // - Gn is the new gain after changing by that much dB
+    // - G0 is the original gain
+    // If we set G0 = 1.0 as our initial reference gain, we can solve for Gn:
+    // dB / 20 = log10(Gn)
+    // 10 ^ (dB / 20) = Gn
+    10.0f32.powf(db / 20.0)
 }
 
 #[component]
 pub fn App() -> impl IntoView {
     let (song_name, set_song_name) = create_signal(SONGS[1].to_string());
-    let (overall_volume, set_overall_volume) = create_signal(50u32);
-    let overall_gain = Signal::derive(move || overall_volume.get() as f32 / 100.0);
-    let sampler = create_local_resource(
-        || (),
-        move |_| async move {
-            let sampler = Sampler::initialize(AudioContext::new().unwrap(), &NOTES).await;
-            sampler.set_overall_gain(overall_gain.get_untracked());
-            sampler
-        },
+    let (overall_volume, set_overall_volume) = create_signal(70u32);
+    // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
+    // it's trivially copyable.
+    let (voice_states, _) = create_signal(
+        ["Tenor", "Lead", "Bari", "Bass"]
+            .into_iter()
+            .map(|name| VoiceState::new(name.to_string()))
+            .collect_vec(),
     );
-    let (_, set_held_notes) =
-        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
+    let any_voice_solo =
+        Signal::derive(move || voice_states.with(|vss| vss.iter().any(|vs| vs.solo.get())));
+
+    let active_voices = {
+        let voice_mute_playbacks = voice_states
+            .get_untracked()
+            .into_iter()
+            .map(|vs| vs.mute_playback_signal(any_voice_solo))
+            .collect_vec();
+        Signal::derive(move || {
+            voice_mute_playbacks
+                .iter()
+                .enumerate()
+                .filter(|(_, muted)| !muted.get())
+                .map(|(voice, _)| voice)
+                .collect::<BitSet>()
+        })
+    };
 
     let song_data = create_local_resource(
         move || song_name.get(),
@@ -61,9 +76,8 @@ pub fn App() -> impl IntoView {
                 .binary()
                 .await
                 .unwrap();
-            let midi_file =
-                Smf::parse(&data).unwrap_or_else(|e| std::panic!("Unable to parse midi file: {e}"));
-            let song_data = Song::from_smf(&midi_file);
+
+            let song_data = SongData::from_bytes(&data);
             for slice in song_data.slices.iter() {
                 debug!("Slice: {:?}", slice.notes_by_voice);
             }
@@ -71,45 +85,77 @@ pub fn App() -> impl IntoView {
         },
     );
 
-    // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
-    // it's trivially copyable.
-    let (voice_states, _) = create_signal(
-        ["Tenor", "Lead", "Bari", "Bass"]
-            .into_iter()
-            .map(|name| VoiceState::new(name.to_string()))
-            .collect_vec(),
-    );
-    let any_voice_solo =
-        Signal::derive(move || voice_states.with(|vss| vss.iter().any(|vs| vs.solo.get())));
-    // TODO - remove this and just use voice states directly
-    let voices_hash = Signal::derive(move || {
-        with!(|voice_states, any_voice_solo| {
-            voice_states
-                .iter()
-                .enumerate()
-                // The voice is "on" if there are no other soloists OR it is a solo, and if it's not muted.
-                .filter(|(_, vs)| (!any_voice_solo || vs.solo.get()) && !vs.mute.get())
-                .map(|(idx, _)| idx)
-                .collect::<HashSet<_>>()
+    let playback_manager =
+        create_local_resource(|| (), |_| async { PlaybackManager::initialize().await });
+    // Mirror/translate the settings into the playback manager
+    create_effect(move |_| {
+        // Important! Don't blindly call update on the resource since that'll overwrite it during
+        // init. Only update it if it already exists.
+        if playback_manager.loading().get() {
+            return;
+        }
+        playback_manager.update(|playback_manager| {
+            let Some(playback_manager) = playback_manager else {
+                return;
+            };
+            if let Some(song_data) = song_data.get() {
+                playback_manager.set_song_data(song_data);
+            }
+        });
+    });
+    create_effect(move |_| {
+        with!(|playback_manager, overall_volume| {
+            if let Some(playback_manager) = playback_manager {
+                playback_manager.set_overall_gain(volume_to_gain(*overall_volume, -30.0, 5.0));
+            }
         })
     });
+    for (voice, voice_state) in voice_states.get_untracked().into_iter().enumerate() {
+        let voice_volume = voice_state.volume;
+        create_effect(move |_| {
+            with!(|playback_manager, voice_volume| {
+                if let Some(playback_manager) = playback_manager {
+                    playback_manager
+                        .set_voice_gain(voice, volume_to_gain(*voice_volume, -30.0, 5.0));
+                }
+            })
+        });
+    }
+
+    let (_, set_held_notes) =
+        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
 
     let keydown_handle = window_event_listener(ev::keydown, move |event| {
-        let key = event.key();
-        if let Some(song_index) = event_to_song_index(event) {
-            with!(|song_data, voices_hash| {
-                let Some(song_data) = song_data else { return };
-                sampler.update(|sampler| {
-                    let Some(sampler) = sampler else { return };
-                    set_held_notes.update(|held_notes| {
-                        held_notes.insert(
-                            key,
-                            start_song_index(sampler, song_data, voices_hash, song_index),
-                        );
-                    });
-                })
-            });
+        let has_modifier =
+            event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
+        if has_modifier {
+            return;
         }
+
+        let key = event.key();
+        // let song_index = "qwerasdfzxcvuiopjkl;m,./".find(event.key().as_str())?;
+        let Some(song_index) = "qwertyuiopasdfghjkl;zxcvbnm,./".find(key.as_str()) else {
+            return;
+        };
+
+        event.prevent_default();
+
+        if event.repeat() {
+            // Only send events on the initial keypress.
+            // This needs to happen after we've prevented default.
+            return;
+        }
+        with!(|playback_manager, active_voices| {
+            let Some(playback_manager) = playback_manager else {
+                return;
+            };
+            set_held_notes.update(|held_notes| {
+                held_notes.insert(
+                    key,
+                    playback_manager.start_notes_at_relative_index(song_index, active_voices),
+                );
+            });
+        });
     });
     on_cleanup(move || keydown_handle.remove());
 
@@ -176,22 +222,7 @@ pub fn App() -> impl IntoView {
                     .get_untracked()
                     .into_iter()
                     .map(|vs| {
-                        view! {
-                            <VoiceControl
-                                name=vs.name
-                                mute=vs.mute
-                                solo=vs.solo
-                                any_solo=any_voice_solo
-                                on_toggle_mute=move |()| {
-                                    vs.mute
-                                        .update(move |m| {
-                                            *m = !*m;
-                                        })
-                                }
-
-                                on_toggle_solo=move |()| vs.solo.update(move |s| *s = !*s)
-                            />
-                        }
+                        view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo/> }
                     })
                     .collect_view()}
             </div>
@@ -200,14 +231,14 @@ pub fn App() -> impl IntoView {
                 <input
                     type="range"
                     max=100
-                    prop:value={overall_volume}
+                    prop:value=overall_volume
                     on:input=move |e| {
                         set_overall_volume.set(event_target_value(&e).parse().unwrap());
-                        sampler.with(|sampler| sampler.as_ref().map(|sampler| sampler.set_overall_gain(overall_gain.get())));
-                    }/>
+                    }
+                />
             </div>
             <Show
-                when=move || !sampler.loading().get() && !song_data.loading().get()
+                when=move || !playback_manager.loading().get() && !song_data.loading().get()
                 fallback=|| {
                     view! {
                         <div class="flex items-center justify-center w-full h-full">

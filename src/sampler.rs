@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use futures::future::join_all;
 use gloo::net::http::Request;
 use itertools::Itertools;
@@ -7,9 +5,11 @@ use js_sys::Uint8Array;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
+use std::collections::BTreeMap;
+use std::fmt::{Debug, Formatter};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, GainNode};
+use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, AudioNode, GainNode};
 
 /// Holds onto the playback nodes that were started by the `Sampler` allowing you to stop them
 /// before they reach the end of the sample.
@@ -47,8 +47,15 @@ impl Drop for SamplerPlaybackGuard {
 /// Heavily inspired by https://tonejs.github.io/docs/latest/classes/Sampler
 pub struct Sampler {
     ctx: AudioContext,
-    overall_gain: GainNode,
     buffers: BTreeMap<i32, AudioBuffer>,
+}
+
+impl Debug for Sampler {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sampler")
+            .field("..", &"..".to_string())
+            .finish()
+    }
 }
 
 impl Sampler {
@@ -56,8 +63,6 @@ impl Sampler {
     // fn new(urls: impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>) -> Self {
     pub async fn initialize(ctx: AudioContext, urls: &[(&str, &str)]) -> Self {
         let ctx_ref = &ctx;
-
-        let overall_gain = setup_overall_gain(ctx_ref).expect("Unable to create overall gain");
 
         let buffer_futures = urls.iter().map(|(note_name, url)| async move {
             (
@@ -73,18 +78,14 @@ impl Sampler {
             .into_iter()
             .collect::<BTreeMap<_, _>>();
 
-        Self {
-            ctx,
-            overall_gain,
-            buffers,
-        }
+        Self { ctx, buffers }
     }
 
-    pub fn set_overall_gain(&self, overall_gain: f32) {
-        self.overall_gain.gain().set_value(overall_gain);
-    }
-
-    pub fn start_note(&self, midi_note: i32) -> Result<SamplerPlaybackGuard, JsValue> {
+    pub fn start_note(
+        &self,
+        midi_note: i32,
+        output_node: &AudioNode,
+    ) -> Result<SamplerPlaybackGuard, JsValue> {
         // Find closest note
         let above = self.buffers.range(midi_note..).next();
         let below = self.buffers.range(..=midi_note).last();
@@ -109,7 +110,7 @@ impl Sampler {
         gain.gain().set_value(1.0);
 
         buffer_source.connect_with_audio_node(&gain)?;
-        gain.connect_with_audio_node(&self.overall_gain)?;
+        gain.connect_with_audio_node(output_node)?;
 
         buffer_source.start()?;
 
@@ -119,12 +120,6 @@ impl Sampler {
             gain,
         })
     }
-}
-
-fn setup_overall_gain(ctx: &AudioContext) -> Result<GainNode, JsValue> {
-    let overall_gain = ctx.create_gain()?;
-    overall_gain.connect_with_audio_node(&ctx.destination())?;
-    Ok(overall_gain)
 }
 
 fn note_name_to_midi_note(note_name: &str) -> Option<i32> {

@@ -1,19 +1,32 @@
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Formatter};
+
+use bit_set::BitSet;
 use itertools::Itertools;
 use log::debug;
-use midly::num::{u4, u7};
+use midly::num::u4;
 use midly::{MidiMessage, Smf, TrackEventKind};
-use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
-pub struct Song {
+pub struct SongData {
     // TODO - Use this when constructing voice states
     #[allow(dead_code)]
     pub voices: usize,
     pub slices: Vec<TimeSlice>,
 }
 
-impl Song {
-    pub fn from_smf(smf: &Smf) -> Self {
+impl Debug for SongData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SongData")
+            .field("..", &"..".to_string())
+            .finish()
+    }
+}
+
+impl SongData {
+    pub fn from_bytes(data: &[u8]) -> Self {
+        let smf =
+            Smf::parse(data).unwrap_or_else(|e| std::panic!("Unable to parse midi file: {e}"));
         debug!("---- Starting from_smf ----");
 
         let mut voice_keys = HashSet::new();
@@ -91,15 +104,17 @@ impl Song {
                         .unwrap();
                     match message.message {
                         MidiMessage::NoteOn { key, vel } => {
+                            let key = key.as_int() as usize;
                             if vel > 0 {
-                                notes_current_voice.insert(key, vel);
+                                notes_current_voice.insert(key);
                             } else {
-                                notes_current_voice.remove(&key);
+                                notes_current_voice.remove(key);
                             }
                         }
                         MidiMessage::NoteOff { key, .. } => {
                             // TODO - use vel?
-                            notes_current_voice.remove(&key);
+                            let key = key.as_int() as usize;
+                            notes_current_voice.remove(key);
                         }
                         _ => {}
                     }
@@ -117,13 +132,13 @@ impl Song {
 
 #[derive(Clone)]
 pub struct TimeSlice {
-    pub notes_by_voice: Vec<HashMap<u7, u7>>,
+    pub notes_by_voice: Vec<BitSet>,
 }
 
 impl TimeSlice {
     fn empty(num_voices: usize) -> Self {
         Self {
-            notes_by_voice: vec![HashMap::default(); num_voices],
+            notes_by_voice: vec![Default::default(); num_voices],
         }
     }
 }
