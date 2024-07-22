@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::fmt::{Debug, Formatter};
+
 use futures::future::join_all;
 use gloo::net::http::Request;
 use itertools::Itertools;
@@ -5,11 +8,10 @@ use js_sys::Uint8Array;
 use log::error;
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Formatter};
 use wasm_bindgen::{JsCast, JsValue};
-use wasm_bindgen_futures::JsFuture;
 use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, AudioNode, GainNode};
+
+use crate::future_util::PromiseAsFuture;
 
 /// Holds onto the playback nodes that were started by the `Sampler` allowing you to stop them
 /// before they reach the end of the sample.
@@ -230,7 +232,8 @@ async fn url_to_audio_buffer(ctx: &AudioContext, url: &str) -> Result<AudioBuffe
         .unwrap();
     let audio_data = Uint8Array::from(audio_data.as_slice()).buffer();
 
-    JsFuture::from(ctx.decode_audio_data(&audio_data)?)
+    ctx.decode_audio_data(&audio_data)?
+        .into_future()
         .await?
         .dyn_into::<AudioBuffer>()
 }

@@ -5,6 +5,8 @@ use leptos::{mount_to_body, view};
 use crate::components::app::App;
 
 mod components;
+mod future_util;
+mod opensheetmusicdisplay_bindings;
 mod playback_manager;
 mod sampler;
 mod song_data;

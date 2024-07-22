@@ -1,11 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 
 use bit_set::BitSet;
+use fraction::Fraction;
 use itertools::Itertools;
-use log::debug;
-use midly::num::u4;
-use midly::{MidiMessage, Smf, TrackEventKind};
+
+use crate::opensheetmusicdisplay_bindings::{OpenSheetMusicDisplay, Tie};
 
 #[derive(Clone)]
 pub struct SongData {
@@ -23,108 +23,134 @@ impl Debug for SongData {
     }
 }
 
+#[derive(Hash, Eq, PartialEq)]
+struct TieKey {
+    start_time: Fraction,
+    voice: u32,
+    pitch: u32,
+    duration: Fraction,
+}
+
+impl TieKey {
+    fn from_tie(tie: &Tie) -> Self {
+        let measure_position = tie
+            .start_note()
+            .source_measure()
+            .absolute_timestamp()
+            .to_rust_fraction()
+            .unwrap();
+        let within_measure_timestamp = tie
+            .start_note()
+            .voice_entry()
+            .timestamp()
+            .to_rust_fraction()
+            .unwrap();
+        Self {
+            start_time: measure_position + within_measure_timestamp,
+            voice: tie.start_note().voice_entry().parent_voice().voice_id(),
+            pitch: tie.pitch().half_tone(),
+            duration: tie.duration().to_rust_fraction().unwrap(),
+        }
+    }
+}
+
 impl SongData {
-    pub fn from_bytes(data: &[u8]) -> Self {
-        let smf =
-            Smf::parse(data).unwrap_or_else(|e| std::panic!("Unable to parse midi file: {e}"));
-        debug!("---- Starting from_smf ----");
-
-        let mut voice_keys = HashSet::new();
-
-        // Put all messages into a single vec sorted by position
-        // Keep track of everything turned on so far. Maybe just clone the notes vec when time advances and apply changes to the latest vec.
-        struct VoiceAndMessage {
-            /// Track and channel
-            voice_key: (usize, u4),
-            message: MidiMessage,
-        }
-
-        // Make sure the song starts at 0
-        let mut messages_by_position = HashMap::from([(0, Vec::new())]);
-
-        for (track_idx, track) in smf.tracks.iter().enumerate() {
-            let mut position = 0;
-            for event in track {
-                position += event.delta.as_int();
-                let TrackEventKind::Midi { channel, message } = event.kind else {
-                    continue;
-                };
-                if matches!(
-                    message,
-                    MidiMessage::NoteOn { .. } | MidiMessage::NoteOff { .. },
-                ) {
-                    debug!("({}, {}) @ {}: {:?}", track_idx, channel, position, message);
-                }
-                let voice_key = (track_idx, channel);
-                voice_keys.insert(voice_key);
-
-                messages_by_position
-                    .entry(position)
-                    .or_insert_with(Vec::new)
-                    .push(VoiceAndMessage { voice_key, message })
-            }
-        }
-
-        let voice_by_key = voice_keys
+    pub fn from_osmd(osmd: &OpenSheetMusicDisplay) -> Self {
+        // Build the (staff_id, voice_id) pairs and sort them. Use position as final voice index.
+        let voice_keys = osmd
+            .sheet()
+            .staves()
             .into_iter()
-            .sorted()
-            .enumerate()
-            .map(|(idx, key)| (key, idx))
-            .collect::<HashMap<_, _>>();
-
-        // Some midi generators (eg MuseScore) have the "note off" happen one tick before the
-        // next "note on", so we bump those to change/happen at the same time.
-        let positions_to_bump = messages_by_position
-            .keys()
-            .sorted()
-            .tuple_windows()
-            .filter(|(pos, next)| {
-                // TODO - Also check to make sure it's only NoteOff messages?
-                *pos + 1 == **next
+            .flat_map(|staff| {
+                let id = staff.id_in_music_sheet();
+                staff.voices().into_iter().map(move |v| (id, v.voice_id()))
             })
-            .map(|(pos, _)| *pos)
+            .unique()
+            .sorted()
             .collect_vec();
-        for pos in positions_to_bump {
-            let mut removed = messages_by_position.remove(&pos).unwrap();
-            messages_by_position
-                .get_mut(&(pos + 1))
-                .unwrap()
-                .append(&mut removed);
-        }
+        let cursor = osmd.cursor().unwrap();
+        cursor.reset();
 
-        let mut current_slice = TimeSlice::empty(voice_by_key.len());
-        let slices = messages_by_position
-            .keys()
-            .sorted()
-            .map(|position| {
-                for message in messages_by_position[position].iter() {
-                    let notes_current_voice = current_slice
-                        .notes_by_voice
-                        .get_mut(voice_by_key[&message.voice_key])
-                        .unwrap();
-                    match message.message {
-                        MidiMessage::NoteOn { key, vel } => {
-                            let key = key.as_int() as usize;
-                            if vel > 0 {
-                                notes_current_voice.insert(key);
-                            } else {
-                                notes_current_voice.remove(key);
-                            }
+        // Iterate through to build the slices.
+        // Store (voice, active pitch, end timestamp)
+        // Ignore subsequent items in ties (use start time/voice/pitch/duration as key?)
+        //  where time is voice entry timestamp + measure absolute timestamp?
+        let mut active_notes_by_voice: Vec<Vec<(u32, Fraction)>> =
+            (0..voice_keys.len()).map(|_| Vec::new()).collect_vec();
+        let mut seen_ties = HashSet::new();
+        let mut slices = Vec::new();
+        let mut cursor_index = 0;
+        while !cursor.iterator().end_reached() {
+            let current_timestamp = cursor
+                .iterator()
+                .current_timestamp()
+                .to_rust_fraction()
+                .unwrap();
+            let previous_notes = active_notes_by_voice.clone();
+            // First expire any old notes
+            active_notes_by_voice = active_notes_by_voice
+                .into_iter()
+                .map(|voice_notes| {
+                    voice_notes
+                        .into_iter()
+                        .filter(|(_, end_timestamp)| end_timestamp > &current_timestamp)
+                        .collect_vec()
+                })
+                .collect_vec();
+
+            // Then add any new notes
+            let Some(current_voice_entries) = cursor.iterator().current_voice_entries() else {
+                continue;
+            };
+            for voice_entry in current_voice_entries {
+                let voice_key = (
+                    voice_entry
+                        .parent_source_staff_entry()
+                        .parent_staff()
+                        .id_in_music_sheet(),
+                    voice_entry.parent_voice().voice_id(),
+                );
+                let voice = voice_keys
+                    .iter()
+                    .position(|k| *k == voice_key)
+                    .unwrap_or_else(|| panic!("Unable to find voice index for key {voice_key:?}"));
+                for note in voice_entry.notes() {
+                    let pitch = if let Some(pitch) = note.pitch() {
+                        pitch.half_tone() + 12
+                    } else {
+                        // A rest, ignore
+                        continue;
+                    };
+                    let duration = if let Some(tie) = note.tie() {
+                        let tie_key = TieKey::from_tie(&tie);
+                        if !seen_ties.insert(tie_key) {
+                            continue;
                         }
-                        MidiMessage::NoteOff { key, .. } => {
-                            // TODO - use vel?
-                            let key = key.as_int() as usize;
-                            notes_current_voice.remove(key);
-                        }
-                        _ => {}
-                    }
+                        tie.duration().to_rust_fraction().unwrap()
+                    } else {
+                        note.length().to_rust_fraction().unwrap()
+                    };
+                    active_notes_by_voice[voice].push((pitch, current_timestamp + duration));
                 }
-                current_slice.clone()
-            })
-            .collect();
+            }
+
+            // If anything changed, copy all the notes over to the slice
+            if previous_notes != active_notes_by_voice {
+                slices.push(TimeSlice::new(
+                    active_notes_by_voice
+                        .iter()
+                        .map(|voice| voice.iter().map(|(pitch, _)| *pitch as usize).collect())
+                        .collect_vec(),
+                    cursor_index,
+                ));
+            }
+
+            cursor.next();
+            cursor_index += 1;
+        }
 
         Self {
-            voices: voice_by_key.len(),
+            voices: voice_keys.len(),
             slices,
         }
     }
@@ -133,12 +159,14 @@ impl SongData {
 #[derive(Clone)]
 pub struct TimeSlice {
     pub notes_by_voice: Vec<BitSet>,
+    pub cursor_index: usize,
 }
 
 impl TimeSlice {
-    fn empty(num_voices: usize) -> Self {
+    fn new(notes_by_voice: Vec<BitSet>, cursor_index: usize) -> Self {
         Self {
-            notes_by_voice: vec![Default::default(); num_voices],
+            notes_by_voice,
+            cursor_index,
         }
     }
 }

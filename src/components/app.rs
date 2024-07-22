@@ -3,14 +3,17 @@ use std::collections::HashMap;
 use bit_set::BitSet;
 use gloo::net::http::Request;
 use itertools::Itertools;
+use js_sys::JsString;
 use leptos::{
     component, create_effect, create_local_resource, create_signal, ev, event_target_value,
-    on_cleanup, view, window_event_listener, with, CollectView, IntoView, Show, Signal, SignalGet,
-    SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
+    on_cleanup, spawn_local, view, window_event_listener, with, CollectView, IntoView, Signal,
+    SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
-use log::debug;
 
+use crate::components::sheet_music::SheetMusic;
 use crate::components::voice_control::{VoiceControl, VoiceState};
+use crate::future_util::PromiseAsFuture;
+use crate::opensheetmusicdisplay_bindings::OpenSheetMusicDisplay;
 use crate::playback_manager::PlaybackManager;
 use crate::sampler::SamplerPlaybackGuard;
 use crate::song_data::SongData;
@@ -66,24 +69,62 @@ pub fn App() -> impl IntoView {
         })
     };
 
-    let song_data = create_local_resource(
+    let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
+    let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
+    let song_raw_data = create_local_resource(
         move || song_name.get(),
-        |song_name| async move {
-            let data = Request::get(&format!("examples/{song_name}.mid"))
+        move |song_name| async move {
+            let data = Request::get(&format!("examples/{song_name}.mxl"))
                 .send()
                 .await
                 .unwrap()
+                // If we really cared about the extra copy of the data below we could use `.body()`
+                // here instead.
                 .binary()
                 .await
                 .unwrap();
-
-            let song_data = SongData::from_bytes(&data);
-            for slice in song_data.slices.iter() {
-                debug!("Slice: {:?}", slice.notes_by_voice);
-            }
-            song_data
+            // The library takes in the binary data as a string (*shudders*) and JS uses arbitrary 16-bit
+            // character codes (nominally utf-16, but doesn't need to be valid utf-16), so we need to make
+            // these u16's and then shove it into a JsString. Interestingly that means just left-padding
+            // them with 0's, not packing two u8's into a single u16 (which didn't work).
+            let u16_data = data.iter().map(|d| *d as u16).collect_vec();
+            JsString::from_char_code(&u16_data)
         },
     );
+    // Load the song into osmd and extract the SongData.
+    // Not using create_local_resource because we depend on osmd which doesn't impl Eq, which is
+    // needed for Resource inputs.
+    create_effect(move |_| {
+        // Important that we track the usage of both of these before we enter `spawn_local`
+        let load_promise = with!(|osmd, song_raw_data| {
+            let Some(osmd) = osmd else { return None };
+            let Some(song_raw_data) = song_raw_data else {
+                return None;
+            };
+            Some(osmd.load(song_raw_data))
+        });
+        let Some(load_promise) = load_promise else {
+            return;
+        };
+        spawn_local(async move {
+            load_promise.into_future().await.unwrap();
+            // We tracked this usage above
+            osmd.with_untracked(|osmd| {
+                // We shouldn't be able to get here without this set.
+                let osmd = osmd.as_ref().unwrap();
+                osmd.set_zoom(0.5);
+                osmd.render();
+                // Now load the song data
+                let cursor = osmd.cursor().unwrap();
+                cursor.reset();
+                cursor.hide();
+                let song_data = SongData::from_osmd(osmd);
+                set_song_data.set(Some(song_data));
+                cursor.reset();
+                cursor.show();
+            });
+        });
+    });
 
     let playback_manager =
         create_local_resource(|| (), |_| async { PlaybackManager::initialize().await });
@@ -122,6 +163,11 @@ pub fn App() -> impl IntoView {
         });
     }
 
+    let is_loading = Signal::derive(move || {
+        playback_manager.loading().get() || song_data.with(|song_data| song_data.is_none())
+    });
+
+    let (index_to_show, set_index_to_show) = create_signal(0);
     let (_, set_held_notes) =
         create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
 
@@ -149,11 +195,15 @@ pub fn App() -> impl IntoView {
             let Some(playback_manager) = playback_manager else {
                 return;
             };
+            let Some((cursor_index, newly_held_notes)) =
+                playback_manager.start_notes_at_relative_index(song_index, active_voices)
+            else {
+                return;
+            };
+            set_index_to_show.set(cursor_index);
+
             set_held_notes.update(|held_notes| {
-                held_notes.insert(
-                    key,
-                    playback_manager.start_notes_at_relative_index(song_index, active_voices),
-                );
+                held_notes.insert(key, newly_held_notes);
             });
         });
     });
@@ -236,20 +286,26 @@ pub fn App() -> impl IntoView {
                         set_overall_volume.set(event_target_value(&e).parse().unwrap());
                     }
                 />
-            </div>
-            <Show
-                when=move || !playback_manager.loading().get() && !song_data.loading().get()
-                fallback=|| {
-                    view! {
-                        <div class="flex items-center justify-center w-full h-full">
-                            <p class="w-fit">Loading...</p>
-                        </div>
-                    }
-                }
-            >
 
-                <img src=move || format!("examples/{}.png", song_name.get())/>
-            </Show>
+            </div>
+            <div class="relative w-full h-full">
+                // We always want this to be here so it can layout properly in the background,
+                // but sometimes we overlay it with a loading div.
+                <SheetMusic index_to_show=index_to_show osmd=osmd set_osmd=set_osmd/>
+
+                {move || {
+                    is_loading
+                        .get()
+                        .then(move || {
+                            view! {
+                                <div class="absolute top-0 left-0 bg-white flex items-center justify-center w-full h-full">
+                                    <p class="w-fit">Loading...</p>
+                                </div>
+                            }
+                        })
+                }}
+
+            </div>
         </div>
     }
 }

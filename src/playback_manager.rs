@@ -69,16 +69,9 @@ impl PlaybackManager {
         &self,
         relative_index: usize,
         active_voices: &BitSet,
-    ) -> Vec<SamplerPlaybackGuard> {
+    ) -> Option<(usize, Vec<SamplerPlaybackGuard>)> {
+        let slice = self.song_data.as_ref()?.slices.get(relative_index)?;
         let mut sampler_playback_guards = Vec::new();
-
-        let Some(slice) = self
-            .song_data
-            .as_ref()
-            .and_then(|sd| sd.slices.get(relative_index))
-        else {
-            return sampler_playback_guards;
-        };
 
         for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
             if !active_voices.contains(voice) {
@@ -94,7 +87,7 @@ impl PlaybackManager {
             }
         }
 
-        sampler_playback_guards
+        Some((slice.cursor_index, sampler_playback_guards))
     }
 }
 
