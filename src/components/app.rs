@@ -69,6 +69,10 @@ pub fn App() -> impl IntoView {
         })
     };
 
+    let (index_to_show, set_index_to_show) = create_signal(0);
+    let (_, set_held_notes) =
+        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
+
     let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
     let song_raw_data = create_local_resource(
@@ -112,6 +116,7 @@ pub fn App() -> impl IntoView {
             osmd.with_untracked(|osmd| {
                 // We shouldn't be able to get here without this set.
                 let osmd = osmd.as_ref().unwrap();
+                set_index_to_show.set(0);
                 osmd.set_zoom(0.5);
                 osmd.render();
                 // Now load the song data
@@ -166,10 +171,6 @@ pub fn App() -> impl IntoView {
     let is_loading = Signal::derive(move || {
         playback_manager.loading().get() || song_data.with(|song_data| song_data.is_none())
     });
-
-    let (index_to_show, set_index_to_show) = create_signal(0);
-    let (_, set_held_notes) =
-        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
 
     let keydown_handle = window_event_listener(ev::keydown, move |event| {
         let has_modifier =
