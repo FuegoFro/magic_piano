@@ -22,10 +22,18 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Volume/mute/solo controls for each voice
 - [x] Better loading, loading indicators
 - [x] Handle race where notes get stuck "on"
-- [ ] Work from MusicXML
+- [x] Work from MusicXML
+- [x] Actually render the sheet music
+- [x] Show current (most recent) position
+- [x] Fix incorrect titles?
+- [ ] Better layout (wrap lines, zoom?)
+- [ ] Controls for longer songs, re-add one-handed use
+- [ ] More obvious song selection
+- [ ] Add more tags
 - [ ] Upload music files, not hard coded
-- [ ] Actually render the sheet music
-  - [ ] Show current (most recent) position
-  - [ ] Grey out notes for muted voices
-  - [ ] Render key to press above each note slice
+- [ ] Better layout
+- [ ] Grey out notes for muted voices
+- [ ] Render key to press above each note slice
+- [ ] Handle clicking on notes to set start point?
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
+- [ ] Mobile controls???

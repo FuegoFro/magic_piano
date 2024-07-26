@@ -18,7 +18,16 @@ use crate::playback_manager::PlaybackManager;
 use crate::sampler::SamplerPlaybackGuard;
 use crate::song_data::SongData;
 
-const SONGS: &[&str] = &["A Million Stars", "Lone Prairie", "Mam'selle"];
+const SONGS: &[&str] = &[
+    "A Million Stars",
+    "Clouds On Fire",
+    "Last Night Was The End Of The World",
+    "Like Leave We'll Fall",
+    "Lone Prairie",
+    "Love Come Back To Me",
+    "Mam'selle",
+    "Though You're Gone (I Love You Still)",
+];
 
 /// Converts a 0-100 volume to a gain multiplier by interpolating between the given min/max
 /// relative decibel levels and then converting that to a multiplier. Min db should probably be
