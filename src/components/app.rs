@@ -48,6 +48,10 @@ fn volume_to_gain(volume: u32, min_db: f32, max_db: f32) -> f32 {
 #[component]
 pub fn App() -> impl IntoView {
     let (song_name, set_song_name) = create_signal(SONGS[0].to_string());
+    let (on_reset_song, set_on_reset_song) = create_signal(());
+    // Reset whenever the song name changes
+    create_effect(move |_| song_name.with(|_| set_on_reset_song.set(())));
+
     let (overall_volume, set_overall_volume) = create_signal(70u32);
     // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
     // it's trivially copyable.
@@ -76,7 +80,8 @@ pub fn App() -> impl IntoView {
         })
     };
 
-    let (index_to_show, set_index_to_show) = create_signal(0);
+    let (start_cursor_index, set_start_cursor_index) = create_signal(0);
+    let (current_cursor_index, set_current_cursor_index) = create_signal(0);
 
     let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
@@ -121,7 +126,6 @@ pub fn App() -> impl IntoView {
             osmd.with_untracked(|osmd| {
                 // We shouldn't be able to get here without this set.
                 let osmd = osmd.as_ref().unwrap();
-                set_index_to_show.set(0);
                 osmd.set_zoom(0.5);
                 osmd.render();
                 // Now load the song data
@@ -130,8 +134,11 @@ pub fn App() -> impl IntoView {
                 cursor.hide();
                 let song_data = SongData::from_osmd(osmd);
                 set_song_data.set(Some(song_data));
-                cursor.reset();
-                cursor.show();
+                // Reset and show the cursors
+                for cursor in osmd.cursors() {
+                    cursor.reset();
+                    cursor.show();
+                }
             });
         });
     });
@@ -178,25 +185,14 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
-        <KeyboardListener
-            playback_manager=playback_manager
-            active_voices=active_voices
-            set_index_to_show=set_index_to_show
-        />
         <div class="flex flex-col items-start p-2 space-y-1 h-screen">
-            <h1 class="text-xl">Controls</h1>
-            <p>
-                "Each key on your keyboard represents an absolute position in a song. "
-                <code class="bg-slate-200">Q</code> " is the first position, "
-                <code class="bg-slate-200">W</code> ", the second, and so on."
-            </p>
-            <p>
-                "The keys are " <code class="bg-slate-200">Q</code> " through "
-                <code class="bg-slate-200">P</code> ", then " <code class="bg-slate-200">A</code>
-                " through " <code class="bg-slate-200">;</code> ", and then "
-                <code class="bg-slate-200">Z</code> " through " <code class="bg-slate-200">/</code>
-                .
-            </p>
+            <KeyboardListener
+                playback_manager=playback_manager
+                active_voices=active_voices
+                set_start_cursor_index=set_start_cursor_index
+                set_current_cursor_index=set_current_cursor_index
+                on_reset_song=on_reset_song
+            />
             <br/>
             <div class="flex flex-row items-baseline space-x-1">
                 <p>"Pick a song:"</p>
@@ -251,7 +247,12 @@ pub fn App() -> impl IntoView {
             <div class="relative w-full h-full">
                 // We always want this to be here so it can layout properly in the background,
                 // but sometimes we overlay it with a loading div.
-                <SheetMusic index_to_show=index_to_show osmd=osmd set_osmd=set_osmd/>
+                <SheetMusic
+                    start_cursor_index=start_cursor_index
+                    current_cursor_index=current_cursor_index
+                    osmd=osmd
+                    set_osmd=set_osmd
+                />
 
                 {move || {
                     is_loading

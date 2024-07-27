@@ -134,8 +134,11 @@ impl SongData {
                 }
             }
 
-            // If anything changed, copy all the notes over to the slice
-            if previous_notes != active_notes_by_voice {
+            // If anything changed and anything is playing, copy all the notes over to the slice
+            let any_notes_active = active_notes_by_voice
+                .iter()
+                .any(|active_notes| !active_notes.is_empty());
+            if previous_notes != active_notes_by_voice && any_notes_active {
                 slices.push(TimeSlice::new(
                     active_notes_by_voice
                         .iter()

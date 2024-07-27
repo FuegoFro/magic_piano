@@ -35,6 +35,15 @@ extern "C" {
     pub fn cursor(this: &OpenSheetMusicDisplay) -> Option<Cursor>;
 
     #[wasm_bindgen(method, getter)]
+    pub fn cursors(this: &OpenSheetMusicDisplay) -> Vec<Cursor>;
+
+    #[wasm_bindgen(method, setter, js_name = "cursorsOptions")]
+    pub fn set_cursors_options(this: &OpenSheetMusicDisplay, cursor_options: Vec<JsValue>);
+
+    #[wasm_bindgen(method, js_name = "enableOrDisableCursors")]
+    pub fn enable_or_disable_cursors(this: &OpenSheetMusicDisplay, enabled: bool);
+
+    #[wasm_bindgen(method, getter)]
     pub fn sheet(this: &OpenSheetMusicDisplay) -> MusicSheet;
 
     pub type MusicSheet;
@@ -222,4 +231,46 @@ pub enum DrawingParameters {
     leadsheet,
     preview,
     thumbnail,
+}
+
+#[derive(Serialize)]
+pub struct CursorOptions {
+    /// alpha value to be used with color (0.0 transparent, 0.5 medium, 1.0 opaque).
+    pub alpha: f32,
+    /// Color to draw the cursor (eg hex, including `#`)
+    pub color: String,
+    /// If true, this cursor will be followed.
+    pub follow: bool,
+    #[serde(rename = "type")]
+    pub cursor_type: CursorType,
+}
+
+impl CursorOptions {
+    pub fn from_color(color: String) -> Self {
+        Self {
+            alpha: 0.5,
+            color,
+            follow: true,
+            cursor_type: CursorType::CurrentNotes,
+        }
+    }
+
+    pub fn to_js_value(&self) -> Result<JsValue, serde_wasm_bindgen::Error> {
+        serde_wasm_bindgen::to_value(self)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Serialize)]
+pub enum CursorType {
+    /// Standard highlighting current notes
+    CurrentNotes = 0,
+    /// Thin line left to the current notes
+    LeftOfNotes = 1,
+    /// Short thin line on top of stave and left to the current notes
+    LeftAndTopOfNotes = 2,
+    /// Current measure
+    CurrentMeasure = 3,
+    /// Current measure to left of current notes
+    LeftMeasure = 4,
 }

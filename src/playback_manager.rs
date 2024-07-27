@@ -67,10 +67,10 @@ impl PlaybackManager {
 
     pub fn start_notes_at_relative_index(
         &self,
-        relative_index: usize,
+        song_index: usize,
         active_voices: &BitSet,
     ) -> Option<(usize, Vec<SamplerPlaybackGuard>)> {
-        let slice = self.song_data.as_ref()?.slices.get(relative_index)?;
+        let slice = self.song_data.as_ref()?.slices.get(song_index)?;
         let mut sampler_playback_guards = Vec::new();
 
         for (voice, notes) in slice.notes_by_voice.iter().enumerate() {
@@ -88,6 +88,20 @@ impl PlaybackManager {
         }
 
         Some((slice.cursor_index, sampler_playback_guards))
+    }
+
+    pub fn max_song_index(&self) -> Option<usize> {
+        Some(self.song_data.as_ref()?.slices.len() - 1)
+    }
+
+    pub fn cursor_index_for_song_index(&self, song_index: usize) -> Option<usize> {
+        Some(
+            self.song_data
+                .as_ref()?
+                .slices
+                .get(song_index)?
+                .cursor_index,
+        )
     }
 }
 
