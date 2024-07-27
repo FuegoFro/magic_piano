@@ -133,6 +133,7 @@ pub fn KeyboardListener(
                 "can be adjusted with the left/right arrows. It can be reset with backtick ("
                 <code class="bg-slate-200">"`"</code> ")."
             </p>
+            <img src="examples/keyboard.png"/>
         </details>
     }
 }
