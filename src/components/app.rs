@@ -1,21 +1,19 @@
-use std::collections::HashMap;
-
 use bit_set::BitSet;
 use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::JsString;
 use leptos::{
-    component, create_effect, create_local_resource, create_signal, ev, event_target_value,
-    on_cleanup, spawn_local, view, window_event_listener, with, CollectView, IntoView, Signal,
-    SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
+    component, create_effect, create_local_resource, create_signal, event_target_value,
+    spawn_local, view, with, CollectView, IntoView, Signal, SignalGet, SignalGetUntracked,
+    SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
 
+use crate::components::keyboard_listener::KeyboardListener;
 use crate::components::sheet_music::SheetMusic;
 use crate::components::voice_control::{VoiceControl, VoiceState};
 use crate::future_util::PromiseAsFuture;
 use crate::opensheetmusicdisplay_bindings::OpenSheetMusicDisplay;
 use crate::playback_manager::PlaybackManager;
-use crate::sampler::SamplerPlaybackGuard;
 use crate::song_data::SongData;
 
 const SONGS: &[&str] = &[
@@ -79,8 +77,6 @@ pub fn App() -> impl IntoView {
     };
 
     let (index_to_show, set_index_to_show) = create_signal(0);
-    let (_, set_held_notes) =
-        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
 
     let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
@@ -181,58 +177,12 @@ pub fn App() -> impl IntoView {
         playback_manager.loading().get() || song_data.with(|song_data| song_data.is_none())
     });
 
-    let keydown_handle = window_event_listener(ev::keydown, move |event| {
-        let has_modifier =
-            event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
-        if has_modifier {
-            return;
-        }
-
-        let key = event.key();
-        // let song_index = "qwerasdfzxcvuiopjkl;m,./".find(event.key().as_str())?;
-        let Some(song_index) = "qwertyuiopasdfghjkl;zxcvbnm,./".find(key.as_str()) else {
-            return;
-        };
-
-        event.prevent_default();
-
-        if event.repeat() {
-            // Only send events on the initial keypress.
-            // This needs to happen after we've prevented default.
-            return;
-        }
-        with!(|playback_manager, active_voices| {
-            let Some(playback_manager) = playback_manager else {
-                return;
-            };
-            let Some((cursor_index, newly_held_notes)) =
-                playback_manager.start_notes_at_relative_index(song_index, active_voices)
-            else {
-                return;
-            };
-            set_index_to_show.set(cursor_index);
-
-            set_held_notes.update(|held_notes| {
-                held_notes.insert(key, newly_held_notes);
-            });
-        });
-    });
-    on_cleanup(move || keydown_handle.remove());
-
-    let keyup_handle = window_event_listener(ev::keyup, move |event| {
-        let has_modifier =
-            event.meta_key() || event.ctrl_key() || event.shift_key() || event.alt_key();
-        if has_modifier {
-            return;
-        }
-
-        set_held_notes.update(|held_notes| {
-            held_notes.remove(&event.key());
-        });
-    });
-    on_cleanup(move || keyup_handle.remove());
-
     view! {
+        <KeyboardListener
+            playback_manager=playback_manager
+            active_voices=active_voices
+            set_index_to_show=set_index_to_show
+        />
         <div class="flex flex-col items-start p-2 space-y-1 h-screen">
             <h1 class="text-xl">Controls</h1>
             <p>

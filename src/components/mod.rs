@@ -1,3 +1,4 @@
 pub mod app;
+mod keyboard_listener;
 mod sheet_music;
-pub mod voice_control;
+mod voice_control;
