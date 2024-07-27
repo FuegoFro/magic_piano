@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use js_sys::{JsString, Promise};
+use serde::Serialize;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 use web_sys::HtmlElement;
@@ -11,6 +12,9 @@ extern "C" {
 
     #[wasm_bindgen(constructor)]
     pub fn new(container: &HtmlElement) -> OpenSheetMusicDisplay;
+
+    #[wasm_bindgen(constructor)]
+    pub fn new_with_options(container: &HtmlElement, options: JsValue) -> OpenSheetMusicDisplay;
 
     #[wasm_bindgen(method, getter)]
     pub fn version(this: &OpenSheetMusicDisplay) -> String;
@@ -182,4 +186,40 @@ impl Fraction {
                 + fraction::Fraction::from(self.whole_value()),
         )
     }
+}
+
+#[derive(Serialize, Default)]
+pub struct IOSMDOptions {
+    #[serde(rename = "pageFormat")]
+    pub page_format: Option<PageFormat>,
+    #[serde(rename = "drawingParameters")]
+    pub drawing_parameters: Option<DrawingParameters>,
+}
+
+#[allow(dead_code, non_camel_case_types)]
+#[derive(Serialize)]
+pub enum PageFormat {
+    A3_L,
+    A3_P,
+    A4_L,
+    A4_P,
+    A5_L,
+    A5_P,
+    A6_L,
+    A6_P,
+    Endless,
+    Letter_L,
+    Letter_P,
+}
+
+#[allow(dead_code, non_camel_case_types)]
+#[derive(Serialize)]
+pub enum DrawingParameters {
+    allon,
+    compact,
+    compacttight,
+    default,
+    leadsheet,
+    preview,
+    thumbnail,
 }

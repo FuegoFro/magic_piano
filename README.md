@@ -32,6 +32,7 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [ ] Add more tags
 - [ ] Upload music files, not hard coded
 - [ ] Better layout
+- [ ] Transpose playback and/or sheet music (independently?)
 - [ ] Grey out notes for muted voices
 - [ ] Render key to press above each note slice
 - [ ] Handle clicking on notes to set start point?

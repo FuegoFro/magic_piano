@@ -49,7 +49,7 @@ fn volume_to_gain(volume: u32, min_db: f32, max_db: f32) -> f32 {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (song_name, set_song_name) = create_signal(SONGS[1].to_string());
+    let (song_name, set_song_name) = create_signal(SONGS[0].to_string());
     let (overall_volume, set_overall_volume) = create_signal(70u32);
     // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
     // it's trivially copyable.

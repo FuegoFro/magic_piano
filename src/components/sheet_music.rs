@@ -39,6 +39,12 @@ pub fn SheetMusic(
     container_ref.on_load(move |container| {
         // Need this to traverse through multiple derefs correctly.
         let container: &web_sys::HtmlDivElement = &container;
+        // let options = IOSMDOptions {
+        //     page_format: None,
+        //     drawing_parameters: None,
+        // };
+        // let options = serde_wasm_bindgen::to_value(&options).unwrap();
+        // let osmd = OpenSheetMusicDisplay::new_with_options(container, options);
         let osmd = OpenSheetMusicDisplay::new(container);
         js_sys::Reflect::set(&window(), &JsString::from("osmd"), &osmd).unwrap();
         set_osmd.set(Some(osmd));
