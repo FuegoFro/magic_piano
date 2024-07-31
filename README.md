@@ -31,10 +31,10 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [ ] More obvious song selection
 - [ ] Add more tags
 - [ ] Upload music files, not hard coded
-- [ ] Better layout
 - [ ] Transpose playback and/or sheet music (independently?)
 - [ ] Grey out notes for muted voices
 - [ ] Render key to press above each note slice
+- [ ] Have cursor highlight the entire range, eg with tied notes
 - [ ] Handle clicking on notes to set start point?
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
 - [ ] Mobile controls???

@@ -39,12 +39,12 @@ pub fn VoiceControl(
             <div class="flex flex-row space-x-1">
                 <button
                     class="border border-black rounded-sm px-1"
-                    class:bg-red-600=voice_state.mute on:click=move |_| voice_state.mute.update(|m| *m = !*m)>
+                    class:bg-red-600=voice_state.mute on:click=move |_| toggle_and_disable(voice_state.mute, voice_state.solo)>
                     Mute
                 </button>
                 <button
                     class="border border-black rounded-sm px-1"
-                    class:bg-sky-600=voice_state.solo on:click=move |_| voice_state.solo.update(|s| *s = !*s)>
+                    class:bg-sky-600=voice_state.solo on:click=move |_| toggle_and_disable(voice_state.solo, voice_state.mute)>
                     Solo
                 </button>
             </div>
@@ -57,5 +57,12 @@ pub fn VoiceControl(
                 }
                 />
         </div>
+    }
+}
+
+fn toggle_and_disable(to_toggle: RwSignal<bool>, to_disable_if_other_active: RwSignal<bool>) {
+    to_toggle.update(|t| *t = !*t);
+    if to_toggle.get() {
+        to_disable_if_other_active.set(false);
     }
 }
