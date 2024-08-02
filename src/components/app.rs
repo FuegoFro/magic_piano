@@ -1,12 +1,13 @@
 use bit_set::BitSet;
 use gloo::net::http::Request;
 use itertools::Itertools;
-use js_sys::JsString;
+use js_sys::{JsString, Uint8Array};
 use leptos::{
-    component, create_effect, create_local_resource, create_signal, event_target_value,
-    spawn_local, view, with, CollectView, IntoView, Signal, SignalGet, SignalGetUntracked,
-    SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
+    component, create_effect, create_local_resource, create_node_ref, create_signal,
+    event_target_value, spawn_local, view, with, CollectView, IntoView, Signal, SignalGet,
+    SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
+use web_sys::File;
 
 use crate::components::keyboard_listener::KeyboardListener;
 use crate::components::sheet_music::SheetMusic;
@@ -45,12 +46,22 @@ fn volume_to_gain(volume: u32, min_db: f32, max_db: f32) -> f32 {
     10.0f32.powf(db / 20.0)
 }
 
+#[derive(Clone, Eq, PartialEq)]
+enum SongChoice {
+    BuiltIn { name: String },
+    Uploaded { file: File },
+}
+
 #[component]
 pub fn App() -> impl IntoView {
-    let (song_name, set_song_name) = create_signal(SONGS[0].to_string());
+    let (song_choice, set_song_choice) = create_signal(SongChoice::BuiltIn {
+        name: SONGS[0].to_string(),
+    });
     let (on_reset_song, set_on_reset_song) = create_signal(());
     // Reset whenever the song name changes
-    create_effect(move |_| song_name.with(|_| set_on_reset_song.set(())));
+    create_effect(move |_| song_choice.with(|_| set_on_reset_song.set(())));
+
+    let file_input_ref = create_node_ref();
 
     let (overall_volume, set_overall_volume) = create_signal(70u32);
     // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
@@ -86,17 +97,31 @@ pub fn App() -> impl IntoView {
     let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
     let song_raw_data = create_local_resource(
-        move || song_name.get(),
-        move |song_name| async move {
-            let data = Request::get(&format!("examples/{song_name}.mxl"))
-                .send()
-                .await
-                .unwrap()
-                // If we really cared about the extra copy of the data below we could use `.body()`
-                // here instead.
-                .binary()
-                .await
-                .unwrap();
+        move || song_choice.get(),
+        move |song_choice| async move {
+            let data = match song_choice {
+                SongChoice::BuiltIn { name } => {
+                    Request::get(&format!("examples/{name}.mxl"))
+                        .send()
+                        .await
+                        .unwrap()
+                        // If we really cared about the extra copy of the data below we could use `.body()`
+                        // here instead.
+                        .binary()
+                        .await
+                        .unwrap()
+                }
+                SongChoice::Uploaded { file } => {
+                    // It's probably a bit inefficient to read this data into Rust-land and then
+                    // pass it back to JS-land, but oh well.
+                    let blob: &web_sys::Blob = file.as_ref();
+                    let array_buffer = blob.array_buffer().into_future().await.unwrap();
+                    let typed_buff: Uint8Array = Uint8Array::new(&array_buffer);
+                    let mut data = vec![0; typed_buff.length() as usize];
+                    typed_buff.copy_to(&mut data);
+                    data
+                }
+            };
             // The library takes in the binary data as a string (*shudders*) and JS uses arbitrary 16-bit
             // character codes (nominally utf-16, but doesn't need to be valid utf-16), so we need to make
             // these u16's and then shove it into a JsString. Interestingly that means just left-padding
@@ -200,7 +225,10 @@ pub fn App() -> impl IntoView {
                     class="border"
                     on:change=move |e| {
                         let new_value = event_target_value(&e);
-                        set_song_name.set(new_value);
+                        set_song_choice
+                            .set(SongChoice::BuiltIn {
+                                name: new_value,
+                            });
                     }
                 >
 
@@ -210,7 +238,7 @@ pub fn App() -> impl IntoView {
                     {SONGS
                         .iter()
                         .map(|&song_option| {
-                            if song_name.with_untracked(|sn| sn == song_option) {
+                            if SONGS[0] == song_option {
                                 view! {
                                     <option selected value=song_option>
                                         {song_option}
@@ -222,6 +250,22 @@ pub fn App() -> impl IntoView {
                         })
                         .collect_view()}
                 </select>
+            </div>
+            <div class="flex flex-row items-baseline space-x-1">
+                <p>"Or upload a song: "</p>
+                <input
+                    _ref=file_input_ref
+                    type="file"
+                    accept=".xml,.mxl,.musicxml"
+                    multiple=false
+                    on:change=move |_| {
+                        let input = file_input_ref.get().unwrap();
+                        let Some(files) = input.files() else { return };
+                        let Some(file) = files.get(0) else { return };
+                        set_song_choice.set(SongChoice::Uploaded { file })
+                    }
+                />
+
             </div>
             <div class="flex flex-row space-x-1">
                 {voice_states
