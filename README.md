@@ -26,14 +26,17 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Actually render the sheet music
 - [x] Show current (most recent) position
 - [x] Fix incorrect titles?
-- [ ] Better layout (wrap lines, zoom?)
-- [ ] Controls for longer songs, re-add one-handed use
-- [ ] More obvious song selection
+- [x] Upload music files, not hard coded
+- [x] Controls for longer songs, re-add one-handed use
+- [ ] Drag-and-drop to upload a song
 - [ ] Add more tags
-- [ ] Upload music files, not hard coded
+- [ ] Render key to press above each note slice
+- [ ] Fix lyrics above staff
+- [ ] Better layout (wrap lines, zoom?)
+- [ ] Scroll cursor into view if offscreen
+- [ ] More obvious song selection
 - [ ] Transpose playback and/or sheet music (independently?)
 - [ ] Grey out notes for muted voices
-- [ ] Render key to press above each note slice
 - [ ] Have cursor highlight the entire range, eg with tied notes
 - [ ] Handle clicking on notes to set start point?
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
