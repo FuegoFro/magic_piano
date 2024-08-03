@@ -86,7 +86,6 @@ impl SongData {
                 .current_timestamp()
                 .to_rust_fraction()
                 .unwrap();
-            let previous_notes = active_notes_by_voice.clone();
             // First expire any old notes
             active_notes_by_voice = active_notes_by_voice
                 .into_iter()
@@ -99,6 +98,7 @@ impl SongData {
                 .collect_vec();
 
             // Then add any new notes
+            let mut added_new_note = false;
             let Some(current_voice_entries) = cursor.iterator().current_voice_entries() else {
                 continue;
             };
@@ -131,14 +131,13 @@ impl SongData {
                         note.length().to_rust_fraction().unwrap()
                     };
                     active_notes_by_voice[voice].push((pitch, current_timestamp + duration));
+                    added_new_note = true;
                 }
             }
 
-            // If anything changed and anything is playing, copy all the notes over to the slice
-            let any_notes_active = active_notes_by_voice
-                .iter()
-                .any(|active_notes| !active_notes.is_empty());
-            if previous_notes != active_notes_by_voice && any_notes_active {
+            // If anything was added, copy all the notes over to the slice. This avoids treating
+            // note-stops as a new slice, including skipping rests.
+            if added_new_note {
                 slices.push(TimeSlice::new(
                     active_notes_by_voice
                         .iter()
