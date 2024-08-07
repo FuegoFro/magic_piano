@@ -168,15 +168,26 @@ fn create_sync_cursor_effect(
 ) {
     let (index_last_shown, set_index_last_shown) = create_signal(0);
     create_effect(move |_| {
+        // Important that these happen before we might early-exit
+        let to_show = desired_index.get() as i32;
+        let index_last_shown = index_last_shown.get();
+
         osmd.with(|osmd| {
-            let to_show = desired_index.get() as i32;
-            let diff = to_show - index_last_shown.get();
             let Some(cursor) = osmd
                 .as_ref()
                 .and_then(|osmd| osmd.cursors().into_iter().nth(nth_cursor))
             else {
                 return;
             };
+
+            let diff = if to_show < 20 && index_last_shown > 50 {
+                // Special case when resetting near the beginning of a long song
+                cursor.reset();
+                to_show
+            } else {
+                to_show - index_last_shown
+            };
+
             if diff > 0 {
                 for _ in 0..diff {
                     cursor.next();
