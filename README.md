@@ -30,11 +30,11 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Controls for longer songs, re-add one-handed use
 - [x] Render key to press above each note slice
 - [x] Expand controls by default if you haven't seen them before
+- [x] Scroll cursor into view if offscreen
+- [x] Better layout (wrap lines, zoom?)
 - [ ] Drag-and-drop to upload a song
 - [ ] Add more tags
 - [ ] Fix lyrics above staff
-- [ ] Better layout (wrap lines, zoom?)
-- [ ] Scroll cursor into view if offscreen
 - [ ] More obvious song selection
 - [ ] Transpose playback and/or sheet music (independently?)
 - [ ] Grey out notes for muted voices

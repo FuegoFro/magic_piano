@@ -23,8 +23,7 @@ pub fn SheetMusic(
     #[prop(into)] set_osmd: WriteSignal<Option<OpenSheetMusicDisplay>>,
 ) -> impl IntoView {
     let container_ref = create_node_ref();
-    // Need to store these somewhere
-    let on_resize = create_trigger();
+    let on_render = create_trigger();
 
     // Sync the indices to show to the cursor
     create_sync_cursor_effect(osmd, start_cursor_index, 1);
@@ -32,8 +31,8 @@ pub fn SheetMusic(
     // When the start cursor is moved, update the key hints
     create_effect(move |_| {
         let start_cursor_index = start_cursor_index.get();
-        // Rerun this if we resize
-        on_resize.track();
+        // Rerun this if we re-render
+        on_render.track();
 
         let letter_cursor_index_pairs = song_data.with(|song_data| {
             let song_data = song_data.as_ref()?;
@@ -160,7 +159,7 @@ pub fn SheetMusic(
         ]);
 
         let start: Box<dyn Fn()> = Box::new(|| {});
-        let end: Box<dyn Fn()> = Box::new(move || on_resize.notify());
+        let end: Box<dyn Fn()> = Box::new(move || on_render.notify());
 
         osmd.handle_resize(
             &Closure::wrap(start).into_js_value(),
@@ -170,7 +169,61 @@ pub fn SheetMusic(
         set_osmd.set(Some(osmd));
     });
 
+    let zoom_input_node_ref = create_node_ref();
+    let (zoom_value, set_zoom_value) = create_signal(50f64);
+    let original_linebreaks_node_ref = create_node_ref();
+
     view! {
+        <div class="flex flex-row space-x-1">
+            <p>"Zoom: "</p>
+            <input
+                _ref=zoom_input_node_ref
+                type="range"
+                min="25"
+                max="200"
+                step="25"
+                list="zoom_values"
+                prop:value=zoom_value
+                on:input=move |_| {
+                    if let Some(zoom_input) = zoom_input_node_ref.get() {
+                        set_zoom_value.set(zoom_input.value_as_number());
+                    }
+                }
+
+                on:change=move |_| {
+                    osmd.with(move |osmd| {
+                        let Some(osmd) = osmd.as_ref() else { return };
+                        osmd.set_zoom((zoom_value.get() / 100f64) as f32);
+                        osmd.render();
+                        on_render.notify();
+                    });
+                }
+            />
+
+            <datalist id="zoom_values">
+                {(25..=200).step_by(25).map(|v| view! { <option value=v></option> }).collect_view()}
+            </datalist>
+            <p>{zoom_value} "%"</p>
+        </div>
+        <div class="flex flex-row items-baseline space-x-1">
+            <p>"Use original line breaks:"</p>
+            <input
+                _ref=original_linebreaks_node_ref
+                type="checkbox"
+                on:change=move |_| {
+                    if let Some(original_linebreaks_input) = original_linebreaks_node_ref.get() {
+                        let use_original_linebreaks = original_linebreaks_input.checked();
+                        osmd.with(move |osmd| {
+                            let Some(osmd) = osmd.as_ref() else { return };
+                            osmd.rules().set_new_system_at_xml_new_page_attribute(use_original_linebreaks);
+                            osmd.rules().set_new_system_at_xml_new_system_attribute(use_original_linebreaks);
+                            osmd.render();
+                            on_render.notify();
+                        });
+                    }
+                }
+            />
+        </div>
         <div
             class="w-full h-full img-height-revert-layer img-scroll-margin-block-5em"
             _ref=container_ref

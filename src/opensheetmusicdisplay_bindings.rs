@@ -52,6 +52,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name = "handleResize")]
     pub fn handle_resize(this: &OpenSheetMusicDisplay, start: &JsValue, end: &JsValue);
 
+    #[wasm_bindgen(method, getter)]
+    pub fn rules(this: &OpenSheetMusicDisplay) -> EngravingRules;
+
     pub type MusicSheet;
 
     #[wasm_bindgen(method, getter)]
@@ -120,6 +123,14 @@ extern "C" {
 
     #[wasm_bindgen(method, getter)]
     pub fn y(this: &PointF2D) -> f32;
+
+    pub type EngravingRules;
+
+    #[wasm_bindgen(method, setter, js_name = "NewSystemAtXMLNewPageAttribute")]
+    pub fn set_new_system_at_xml_new_page_attribute(this: &EngravingRules, enabled: bool);
+
+    #[wasm_bindgen(method, setter, js_name = "NewSystemAtXMLNewSystemAttribute")]
+    pub fn set_new_system_at_xml_new_system_attribute(this: &EngravingRules, enabled: bool);
 
     pub type Cursor;
 
