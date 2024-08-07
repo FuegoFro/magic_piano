@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use itertools::Itertools;
 use js_sys::JsString;
 use leptos::{
-    component, create_effect, create_node_ref, create_signal, document, view, window, CollectView,
-    IntoView, Signal, SignalGet, SignalSet, SignalWith, WriteSignal,
+    component, create_effect, create_node_ref, create_signal, create_trigger, document, view,
+    window, CollectView, IntoView, Signal, SignalGet, SignalSet, SignalWith, WriteSignal,
 };
+use wasm_bindgen::closure::Closure;
 
 use crate::components::keyboard_listener::LETTERS;
 use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
@@ -22,19 +23,17 @@ pub fn SheetMusic(
     #[prop(into)] set_osmd: WriteSignal<Option<OpenSheetMusicDisplay>>,
 ) -> impl IntoView {
     let container_ref = create_node_ref();
+    // Need to store these somewhere
+    let on_resize = create_trigger();
 
     // Sync the indices to show to the cursor
     create_sync_cursor_effect(osmd, start_cursor_index, 1);
     create_sync_cursor_effect(osmd, current_cursor_index, 0);
     // When the start cursor is moved, update the key hints
-    create_effect(move |previous_start_cursor_index| {
+    create_effect(move |_| {
         let start_cursor_index = start_cursor_index.get();
-        // Okay, this is definitely a bit cursed, but the outer Option<...> indicates whether or
-        // not this effect has been run from Leptos' POV, and the inner Option<...> indicates
-        // whether or not we were actually able to do the thing.
-        if Some(Some(start_cursor_index)) == previous_start_cursor_index {
-            return Some(start_cursor_index);
-        }
+        // Rerun this if we resize
+        on_resize.track();
 
         let letter_cursor_index_pairs = song_data.with(|song_data| {
             let song_data = song_data.as_ref()?;
@@ -67,7 +66,7 @@ pub fn SheetMusic(
                     [idx]
                     .staff_entries()
                     .into_iter()
-                    .next()
+                    .find(|se| !se.is_undefined())
                     .unwrap();
                 let x = staff_entry.position_and_shape().absolute_position().x();
                 let y = staff_entry.get_highest_y_at_entry();
@@ -96,12 +95,13 @@ pub fn SheetMusic(
         let view = view! {
             <g id=KEY_HINT_CONTAINER_ID>
 
-                {letter_coords_id_pairs.iter()
+                {letter_coords_id_pairs
+                    .iter()
                     .map(|(l, x, _, system_id)| {
                         let x = x * 10. - 10.;
                         let y = y_by_system_id.get(system_id).unwrap() * 10. - 10.;
                         view! {
-                            <circle cx={x + 5.} cy={y - 5.} r="15" fill="#99ef97"/>
+                            <circle cx=x + 5. cy=y - 5. r="15" fill="#99ef97"></circle>
 
                             <text
                                 stroke-width="0.3"
@@ -112,8 +112,8 @@ pub fn SheetMusic(
                                 font-size="20px"
                                 font-weight="normal"
                                 font-style="normal"
-                                x={x}
-                                y={y}
+                                x=x
+                                y=y
                             >
                                 {*l}
                             </text>
@@ -125,7 +125,7 @@ pub fn SheetMusic(
         };
         svg.append_child(&view).unwrap();
 
-        Some(start_cursor_index)
+        Some(())
     });
 
     container_ref.on_load(move |container| {
@@ -146,6 +146,14 @@ pub fn SheetMusic(
                 .to_js_value()
                 .unwrap(),
         ]);
+
+        let start: Box<dyn Fn()> = Box::new(|| {});
+        let end: Box<dyn Fn()> = Box::new(move || on_resize.notify());
+
+        osmd.handle_resize(
+            &Closure::wrap(start).into_js_value(),
+            &Closure::wrap(end).into_js_value(),
+        );
         js_sys::Reflect::set(&window(), &JsString::from("osmd"), &osmd).unwrap();
         set_osmd.set(Some(osmd));
     });

@@ -4,8 +4,8 @@ use itertools::Itertools;
 use js_sys::{JsString, Uint8Array};
 use leptos::{
     component, create_effect, create_local_resource, create_node_ref, create_signal,
-    event_target_value, spawn_local, view, with, CollectView, IntoView, Signal, SignalGet,
-    SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
+    create_trigger, event_target_value, spawn_local, view, with, CollectView, IntoView, Signal,
+    SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
 };
 use web_sys::File;
 
@@ -57,9 +57,9 @@ pub fn App() -> impl IntoView {
     let (song_choice, set_song_choice) = create_signal(SongChoice::BuiltIn {
         name: SONGS[0].to_string(),
     });
-    let (on_reset_song, set_on_reset_song) = create_signal(());
+    let on_reset_song = create_trigger();
     // Reset whenever the song name changes
-    create_effect(move |_| song_choice.with(|_| set_on_reset_song.set(())));
+    create_effect(move |_| song_choice.with(|_| on_reset_song.notify()));
 
     let file_input_ref = create_node_ref();
 

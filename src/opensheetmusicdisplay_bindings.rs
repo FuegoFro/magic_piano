@@ -49,6 +49,9 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     pub fn graphic(this: &OpenSheetMusicDisplay) -> Option<GraphicalMusicSheet>;
 
+    #[wasm_bindgen(method, js_name = "handleResize")]
+    pub fn handle_resize(this: &OpenSheetMusicDisplay, start: &JsValue, end: &JsValue);
+
     pub type MusicSheet;
 
     #[wasm_bindgen(method, getter)]

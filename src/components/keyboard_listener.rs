@@ -5,7 +5,7 @@ use crate::sampler::SamplerPlaybackGuard;
 use bit_set::BitSet;
 use leptos::{
     component, create_effect, create_signal, ev, on_cleanup, view, window_event_listener, with,
-    IntoView, Resource, RwSignal, Signal, SignalGet, SignalSet, SignalUpdate, WriteSignal,
+    IntoView, Resource, RwSignal, Signal, SignalGet, SignalSet, SignalUpdate, Trigger, WriteSignal,
 };
 
 pub const LETTERS: &str = "qwerasdfzxcvuiopjkl;m,./";
@@ -18,7 +18,7 @@ pub fn KeyboardListener(
     set_start_cursor_index: WriteSignal<usize>,
     set_current_cursor_index: WriteSignal<usize>,
     // Lets us know when to reset things.
-    #[prop(into)] on_reset_song: Signal<()>,
+    #[prop(into)] on_reset_song: Trigger,
 ) -> impl IntoView {
     let (_, set_held_notes) =
         create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
@@ -26,7 +26,7 @@ pub fn KeyboardListener(
     let most_recent_song_index = RwSignal::new(0);
     // Reset the indices when we have a new song.
     create_effect(move |_| {
-        on_reset_song.get(); // This will re-trigger the effect.
+        on_reset_song.track(); // This will re-trigger the effect.
         start_song_index.set(0);
         most_recent_song_index.set(0);
         set_start_cursor_index.set(0);
