@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use crate::components::keyboard_listener::LETTERS;
+use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
+use crate::song_data::SongData;
 use itertools::Itertools;
 use js_sys::JsString;
 use leptos::{
@@ -7,10 +10,7 @@ use leptos::{
     window, CollectView, IntoView, Signal, SignalGet, SignalSet, SignalWith, WriteSignal,
 };
 use wasm_bindgen::closure::Closure;
-
-use crate::components::keyboard_listener::LETTERS;
-use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
-use crate::song_data::SongData;
+use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 const KEY_HINT_CONTAINER_ID: &str = "magicPianoKeyHintContainer";
 
@@ -62,15 +62,27 @@ pub fn SheetMusic(
         let letter_coords_id_pairs = letter_cursor_index_pairs
             .into_iter()
             .map(|(l, idx)| {
-                let staff_entry = graphical_music_sheet.vertical_graphical_staff_entry_containers()
-                    [idx]
+                let (x, y, system_id) = graphical_music_sheet
+                    .vertical_graphical_staff_entry_containers()[idx]
                     .staff_entries()
                     .into_iter()
-                    .find(|se| !se.is_undefined())
+                    .filter(|se| !se.is_undefined())
+                    .map(|se| {
+                        (
+                            se.position_and_shape().absolute_position().x(),
+                            se.get_highest_y_at_entry(),
+                            se.parent_measure().parent_music_system().id(),
+                        )
+                    })
+                    // We want the upper-left-most x/y coords
+                    .reduce(|(x_a, y_a, id_a), (x_b, y_b, id_b)| {
+                        assert_eq!(
+                            id_a, id_b,
+                            "Vertical entry had staves with different system ids!"
+                        );
+                        (x_a.min(x_b), y_a.min(y_b), id_a)
+                    })
                     .unwrap();
-                let x = staff_entry.position_and_shape().absolute_position().x();
-                let y = staff_entry.get_highest_y_at_entry();
-                let system_id = staff_entry.parent_measure().parent_music_system().id();
                 (l, x, y, system_id)
             })
             .collect_vec();
@@ -158,7 +170,12 @@ pub fn SheetMusic(
         set_osmd.set(Some(osmd));
     });
 
-    view! { <div class="w-full h-full img-height-revert-layer" _ref=container_ref></div> }
+    view! {
+        <div
+            class="w-full h-full img-height-revert-layer img-scroll-margin-block-5em"
+            _ref=container_ref
+        ></div>
+    }
 }
 
 fn create_sync_cursor_effect(
@@ -197,6 +214,14 @@ fn create_sync_cursor_effect(
                     cursor.previous();
                 }
             }
+
+            cursor
+                .cursor_element()
+                .scroll_into_view_with_scroll_into_view_options(
+                    ScrollIntoViewOptions::new()
+                        .behavior(ScrollBehavior::Instant)
+                        .block(ScrollLogicalPosition::Nearest),
+                );
             set_index_last_shown.set(to_show);
         });
     });

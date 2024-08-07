@@ -5,3 +5,7 @@
 .img-height-revert-layer img[height] {
     height: revert-layer;
 }
+
+.img-scroll-margin-block-5em img {
+    scroll-margin-block: 5em;
+}

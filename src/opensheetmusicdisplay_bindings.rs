@@ -144,6 +144,9 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     pub fn iterator(this: &Cursor) -> MusicPartManagerIterator;
 
+    #[wasm_bindgen(method, getter, js_name = "cursorElement")]
+    pub fn cursor_element(this: &Cursor) -> HtmlElement;
+
     pub type MusicPartManagerIterator;
 
     #[wasm_bindgen(method, getter, js_name = "endReached")]
