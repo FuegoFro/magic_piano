@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bit-set = "0.8.0"
+codee = "0.1.2"
 console_error_panic_hook = "0.1"
 console_log = "1.0.0"
 fraction = "0.15.3"
@@ -15,6 +16,7 @@ gloo = "0.11.0"
 itertools = "0.13.0"
 js-sys = "0.3.61"
 leptos = { version = "0.6.12", features = ["csr"] }
+leptos-use = "0.11.3"
 log = "0.4"
 once_cell = "1.19.0"
 regex = "1.10.5"

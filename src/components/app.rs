@@ -4,8 +4,9 @@ use itertools::Itertools;
 use js_sys::{JsString, Uint8Array};
 use leptos::{
     component, create_effect, create_local_resource, create_node_ref, create_signal,
-    create_trigger, event_target_value, spawn_local, view, with, CollectView, IntoView, Signal,
-    SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith, SignalWithUntracked,
+    create_trigger, event_target_value, spawn_local, view, with, CollectView, IntoAttribute,
+    IntoView, Signal, SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith,
+    SignalWithUntracked,
 };
 use web_sys::File;
 
@@ -238,14 +239,15 @@ pub fn App() -> impl IntoView {
                     {SONGS
                         .iter()
                         .map(|&song_option| {
-                            if SONGS[0] == song_option {
-                                view! {
-                                    <option selected value=song_option>
-                                        {song_option}
-                                    </option>
-                                }
+                            let attrs = if SONGS[0] == song_option {
+                                vec![("selected", true.into_attribute())]
                             } else {
-                                view! { <option value=song_option>{song_option}</option> }
+                                vec![]
+                            };
+                            view! {
+                                <option {..attrs} value=song_option>
+                                    {song_option}
+                                </option>
                             }
                         })
                         .collect_view()}

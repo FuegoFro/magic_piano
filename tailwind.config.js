@@ -15,7 +15,12 @@ module.exports = {
         }
     },
     theme: {
-        extend: {},
+        extend: {
+            colors: {
+                noteCursor: "#99ef97",
+                startCursor: "#81f7fd",
+            },
+        },
     },
     plugins: [],
 }

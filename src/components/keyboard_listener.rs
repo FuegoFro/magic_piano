@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
+use bit_set::BitSet;
+use codee::string::FromToStringCodec;
+use leptos::{
+    component, create_effect, create_node_ref, create_signal, ev, on_cleanup, view,
+    window_event_listener, with, IntoAttribute, IntoView, Resource, RwSignal, Signal, SignalGet,
+    SignalGetUntracked, SignalSet, SignalUpdate, Trigger, WriteSignal,
+};
+use leptos_use::storage::use_local_storage;
+
 use crate::playback_manager::PlaybackManager;
 use crate::sampler::SamplerPlaybackGuard;
-use bit_set::BitSet;
-use leptos::{
-    component, create_effect, create_signal, ev, on_cleanup, view, window_event_listener, with,
-    IntoView, Resource, RwSignal, Signal, SignalGet, SignalSet, SignalUpdate, Trigger, WriteSignal,
-};
 
 pub const LETTERS: &str = "qwerasdfzxcvuiopjkl;m,./";
 // pub const LETTERS: &str = "qwertyuiopasdfghjkl;zxcvbnm,./";
@@ -99,11 +103,35 @@ pub fn KeyboardListener(
     });
     on_cleanup(move || keyup_handle.remove());
 
+    let details_node_ref = create_node_ref();
+    let (has_seen_controls, set_has_seen_controls, _) =
+        use_local_storage::<bool, FromToStringCodec>("has_seen_controls");
+    // Annoyingly the mere presence of this attribute determines whether it's open
+    let attrs = if has_seen_controls.get_untracked() {
+        vec![]
+    } else {
+        vec![("open", true.into_attribute())]
+    };
+
     view! {
-        <details>
+        <details
+            {..attrs}
+            class="outline outline-2 outline-slate-500 bg-slate-100 p-1 rounded"
+            _ref=details_node_ref
+            on:toggle=move |_| {
+                if !details_node_ref.get().map(|d| d.open()).unwrap_or(true) {
+                    set_has_seen_controls.set(true);
+                }
+            }
+        >
+
             <summary>
                 <h1 class="text-xl inline">Controls</h1>
             </summary>
+            <div class="flex flex-row items-baseline space-x-1">
+                <div class="size-3 h-4 w-4 rounded-full bg-noteCursor"></div>
+                <h2 class="text-lg font-medium">Playing notes</h2>
+            </div>
             <p>
                 "Each key on your keyboard will play the notes at a position in a song. "
                 <code class="bg-slate-200">Q</code> " is the first position, "
@@ -130,13 +158,19 @@ pub fn KeyboardListener(
             <p>
                 <code class="bg-slate-200">"M , . /"</code>
             </p>
+            <div class="flex flex-row items-baseline space-x-1">
+                <div class="size-3 h-4 w-4 rounded-full bg-startCursor"></div>
+                <h2 class="text-lg font-medium">Changing starting position</h2>
+            </div>
+
             <p>
                 "The positions are relative to the current start (indicated in teal). This can be "
                 "moved to just after the most recently played note by pressing the space bar, or "
                 "can be adjusted with the left/right arrows. It can be reset with backtick ("
                 <code class="bg-slate-200">"`"</code> ")."
             </p>
-            <img src="examples/keyboard.png"/>
+            <img class="my-1" src="examples/keyboard.png"/>
+            <p>"(you can collapse these instructions by clicking on \"Controls\" above)"</p>
         </details>
     }
 }

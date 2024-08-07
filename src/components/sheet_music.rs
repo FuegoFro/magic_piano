@@ -189,6 +189,10 @@ fn create_sync_cursor_effect(
         let to_show = desired_index.get() as i32;
         let index_last_shown = index_last_shown.get();
 
+        if to_show == index_last_shown {
+            return;
+        }
+
         osmd.with(|osmd| {
             let Some(cursor) = osmd
                 .as_ref()

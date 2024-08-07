@@ -29,7 +29,7 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Upload music files, not hard coded
 - [x] Controls for longer songs, re-add one-handed use
 - [x] Render key to press above each note slice
-- [ ] Expand controls by default if you haven't seen them before
+- [x] Expand controls by default if you haven't seen them before
 - [ ] Drag-and-drop to upload a song
 - [ ] Add more tags
 - [ ] Fix lyrics above staff
