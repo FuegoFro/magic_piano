@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use js_sys::{JsString, Promise};
 use serde::Serialize;
 use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::HtmlElement;
 
 #[wasm_bindgen(js_namespace = opensheetmusicdisplay)]
@@ -46,6 +46,9 @@ extern "C" {
     #[wasm_bindgen(method, getter)]
     pub fn sheet(this: &OpenSheetMusicDisplay) -> MusicSheet;
 
+    #[wasm_bindgen(method, getter)]
+    pub fn graphic(this: &OpenSheetMusicDisplay) -> Option<GraphicalMusicSheet>;
+
     pub type MusicSheet;
 
     #[wasm_bindgen(method, getter)]
@@ -68,6 +71,52 @@ extern "C" {
 
     #[wasm_bindgen(method, getter, js_name = "absoluteTimestamp")]
     pub fn absolute_timestamp(this: &SourceMeasure) -> Fraction;
+
+    pub type GraphicalMusicSheet;
+
+    #[wasm_bindgen(method, getter, js_name = "verticalGraphicalStaffEntryContainers")]
+    pub fn vertical_graphical_staff_entry_containers(
+        this: &GraphicalMusicSheet,
+    ) -> Vec<VerticalGraphicalStaffEntryContainer>;
+
+    pub type VerticalGraphicalStaffEntryContainer;
+
+    #[wasm_bindgen(method, getter, js_name = "staffEntries")]
+    pub fn staff_entries(this: &VerticalGraphicalStaffEntryContainer) -> Vec<GraphicalStaffEntry>;
+
+    pub type GraphicalStaffEntry;
+
+    #[wasm_bindgen(method, getter, js_name = "PositionAndShape")]
+    pub fn position_and_shape(this: &GraphicalStaffEntry) -> BoundingBox;
+
+    #[wasm_bindgen(method, js_name = "getHighestYAtEntry")]
+    pub fn get_highest_y_at_entry(this: &GraphicalStaffEntry) -> f32;
+
+    #[wasm_bindgen(method, getter, js_name = "parentMeasure")]
+    pub fn parent_measure(this: &GraphicalStaffEntry) -> GraphicalMeasure;
+
+    pub type GraphicalMeasure;
+
+    #[wasm_bindgen(method, getter, js_name = "parentMusicSystem")]
+    pub fn parent_music_system(this: &GraphicalMeasure) -> MusicSystem;
+
+    pub type MusicSystem;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn id(this: &MusicSystem) -> u32;
+
+    pub type BoundingBox;
+
+    #[wasm_bindgen(method, getter, js_name = "absolutePosition")]
+    pub fn absolute_position(this: &BoundingBox) -> PointF2D;
+
+    pub type PointF2D;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn x(this: &PointF2D) -> f32;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn y(this: &PointF2D) -> f32;
 
     pub type Cursor;
 
@@ -171,6 +220,12 @@ extern "C" {
 
     #[wasm_bindgen(method, getter, js_name = "wholeValue")]
     pub fn whole_value(this: &Fraction) -> u32;
+}
+
+impl Clone for OpenSheetMusicDisplay {
+    fn clone(&self) -> Self {
+        JsValue::clone(self).dyn_into::<Self>().unwrap()
+    }
 }
 
 #[wasm_bindgen]

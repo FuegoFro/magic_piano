@@ -28,9 +28,10 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Fix incorrect titles?
 - [x] Upload music files, not hard coded
 - [x] Controls for longer songs, re-add one-handed use
+- [x] Render key to press above each note slice
+- [ ] Expand controls by default if you haven't seen them before
 - [ ] Drag-and-drop to upload a song
 - [ ] Add more tags
-- [ ] Render key to press above each note slice
 - [ ] Fix lyrics above staff
 - [ ] Better layout (wrap lines, zoom?)
 - [ ] Scroll cursor into view if offscreen

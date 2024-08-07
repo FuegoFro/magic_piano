@@ -292,6 +292,7 @@ pub fn App() -> impl IntoView {
                 // We always want this to be here so it can layout properly in the background,
                 // but sometimes we overlay it with a loading div.
                 <SheetMusic
+                    song_data=song_data
                     start_cursor_index=start_cursor_index
                     current_cursor_index=current_cursor_index
                     osmd=osmd

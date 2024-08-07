@@ -8,6 +8,9 @@ use leptos::{
     IntoView, Resource, RwSignal, Signal, SignalGet, SignalSet, SignalUpdate, WriteSignal,
 };
 
+pub const LETTERS: &str = "qwerasdfzxcvuiopjkl;m,./";
+// pub const LETTERS: &str = "qwertyuiopasdfghjkl;zxcvbnm,./";
+
 #[component]
 pub fn KeyboardListener(
     playback_manager: Resource<(), PlaybackManager>,
@@ -186,8 +189,7 @@ fn get_no_modifiers_key_action(
         KeyAction::new(move || {
             start_song_index.set(0);
         })
-    } else if let Some(offset) = "qwerasdfzxcvuiopjkl;m,./".find(key.as_str()) {
-        // } else if let Some(offset) = "qwertyuiopasdfghjkl;zxcvbnm,./".find(key.as_str()) {
+    } else if let Some(offset) = LETTERS.find(key.as_str()) {
         KeyAction::new(move || {
             with!(|playback_manager, active_voices, start_song_index| {
                 let song_index = start_song_index + offset;
