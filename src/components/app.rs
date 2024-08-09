@@ -4,9 +4,8 @@ use itertools::Itertools;
 use js_sys::{JsString, Uint8Array};
 use leptos::{
     component, create_effect, create_local_resource, create_memo, create_node_ref,
-    create_owning_memo, create_signal, create_trigger, event_target_value, spawn_local, view, with,
-    CollectView, IntoAttribute, IntoView, Signal, SignalGet, SignalSet, SignalUpdate, SignalWith,
-    SignalWithUntracked,
+    create_owning_memo, create_signal, create_trigger, event_target_value, view, with, CollectView,
+    IntoAttribute, IntoView, Signal, SignalGet, SignalSet, SignalUpdate, SignalWith,
 };
 use web_sys::File;
 
@@ -14,7 +13,6 @@ use crate::components::keyboard_listener::KeyboardListener;
 use crate::components::sheet_music::SheetMusic;
 use crate::components::voice_control::{VoiceControl, VoiceState};
 use crate::future_util::PromiseAsFuture;
-use crate::opensheetmusicdisplay_bindings::OpenSheetMusicDisplay;
 use crate::playback_manager::PlaybackManager;
 use crate::song_data::SongData;
 
@@ -76,7 +74,7 @@ fn volume_to_gain(volume: u32, min_db: f32, max_db: f32) -> f32 {
 }
 
 #[derive(Clone, Eq, PartialEq)]
-enum SongChoice {
+pub enum SongChoice {
     BuiltIn { name: String },
     Uploaded { file: File },
 }
@@ -113,7 +111,6 @@ pub fn App() -> impl IntoView {
     let (start_cursor_index, set_start_cursor_index) = create_signal(0);
     let (current_cursor_index, set_current_cursor_index) = create_signal(0);
 
-    let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
     let song_raw_data = create_local_resource(
         move || song_choice.get(),
@@ -149,43 +146,6 @@ pub fn App() -> impl IntoView {
             JsString::from_char_code(&u16_data)
         },
     );
-    // Load the song into osmd and extract the SongData.
-    // Not using create_local_resource because we depend on osmd which doesn't impl Eq, which is
-    // needed for Resource inputs.
-    create_effect(move |_| {
-        // Important that we track the usage of both of these before we enter `spawn_local`
-        let load_promise = with!(|osmd, song_raw_data| {
-            let Some(osmd) = osmd else { return None };
-            let Some(song_raw_data) = song_raw_data else {
-                return None;
-            };
-            Some(osmd.load(song_raw_data))
-        });
-        let Some(load_promise) = load_promise else {
-            return;
-        };
-        spawn_local(async move {
-            load_promise.into_future().await.unwrap();
-            // We tracked this usage above
-            osmd.with_untracked(|osmd| {
-                // We shouldn't be able to get here without this set.
-                let osmd = osmd.as_ref().unwrap();
-                osmd.set_zoom(0.5);
-                osmd.render();
-                // Now load the song data
-                let cursor = osmd.cursor().unwrap();
-                cursor.reset();
-                cursor.hide();
-                let song_data = SongData::from_osmd(osmd);
-                set_song_data.set(Some(song_data));
-                // Reset and show the cursors
-                for cursor in osmd.cursors() {
-                    cursor.reset();
-                    cursor.show();
-                }
-            });
-        });
-    });
 
     let (overall_volume, set_overall_volume) = create_signal(70u32);
     let num_voices = create_memo(move |_| {
@@ -325,6 +285,7 @@ pub fn App() -> impl IntoView {
                         })
                         .collect_view()
                 }}
+
             </div>
             <div class="flex flex-row space-x-1">
                 <p>"Overall Volume:"</p>
@@ -345,8 +306,8 @@ pub fn App() -> impl IntoView {
                     song_data=song_data
                     start_cursor_index=start_cursor_index
                     current_cursor_index=current_cursor_index
-                    osmd=osmd
-                    set_osmd=set_osmd
+                    song_raw_data=song_raw_data
+                    set_song_data=set_song_data
                 />
 
                 {move || {

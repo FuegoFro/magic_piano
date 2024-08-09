@@ -1,16 +1,20 @@
 use std::collections::HashMap;
 
-use crate::components::keyboard_listener::LETTERS;
-use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
-use crate::song_data::SongData;
 use itertools::Itertools;
 use js_sys::JsString;
 use leptos::{
-    component, create_effect, create_node_ref, create_signal, create_trigger, document, view,
-    window, CollectView, IntoView, Signal, SignalGet, SignalSet, SignalWith, WriteSignal,
+    component, create_effect, create_node_ref, create_signal, create_trigger, document,
+    spawn_local, view, window, with, CollectView, IntoView, ReadSignal, Resource, Signal,
+    SignalGet, SignalGetUntracked, SignalSet, SignalWith, SignalWithUntracked, WriteSignal,
 };
 use wasm_bindgen::closure::Closure;
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
+
+use crate::components::app::SongChoice;
+use crate::components::keyboard_listener::LETTERS;
+use crate::future_util::PromiseAsFuture;
+use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
+use crate::song_data::SongData;
 
 const KEY_HINT_CONTAINER_ID: &str = "magicPianoKeyHintContainer";
 
@@ -19,9 +23,10 @@ pub fn SheetMusic(
     #[prop(into)] song_data: Signal<Option<SongData>>,
     #[prop(into)] start_cursor_index: Signal<usize>,
     #[prop(into)] current_cursor_index: Signal<usize>,
-    #[prop(into)] osmd: Signal<Option<OpenSheetMusicDisplay>>,
-    #[prop(into)] set_osmd: WriteSignal<Option<OpenSheetMusicDisplay>>,
+    #[prop(into)] song_raw_data: Resource<SongChoice, JsString>,
+    #[prop(into)] set_song_data: WriteSignal<Option<SongData>>,
 ) -> impl IntoView {
+    let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
     let container_ref = create_node_ref();
     let on_render = create_trigger();
 
@@ -170,8 +175,49 @@ pub fn SheetMusic(
     });
 
     let zoom_input_node_ref = create_node_ref();
-    let (zoom_value, set_zoom_value) = create_signal(50f64);
+    let (zoom_value, set_zoom_value) = create_signal(75f64);
     let original_linebreaks_node_ref = create_node_ref();
+
+    // Load the song into osmd and extract the SongData.
+    // Not using create_local_resource because we depend on osmd which doesn't impl Eq, which is
+    // needed for Resource inputs.
+    create_effect(move |_| {
+        // Important that we track the usage of both of these before we enter `spawn_local`
+        let load_promise = with!(|osmd, song_raw_data| {
+            let Some(osmd) = osmd else { return None };
+            let Some(song_raw_data) = song_raw_data else {
+                return None;
+            };
+            Some(osmd.load(song_raw_data))
+        });
+        let Some(load_promise) = load_promise else {
+            return;
+        };
+        spawn_local(async move {
+            load_promise.into_future().await.unwrap();
+            // We tracked this usage above
+            osmd.with_untracked(|osmd| {
+                // We shouldn't be able to get here without this set.
+                let osmd = osmd.as_ref().unwrap();
+                osmd.set_zoom((zoom_value.get_untracked() / 100f64) as f32);
+                osmd.render();
+                // Now load the song data
+                let cursor = osmd.cursor().unwrap();
+                cursor.reset();
+                cursor.hide();
+                let song_data = SongData::from_osmd(osmd);
+                set_song_data.set(Some(song_data));
+                // Reset and show the cursors
+                for cursor in osmd.cursors() {
+                    cursor.reset();
+                    cursor.show();
+                }
+
+                // Do this once we've set the song data
+                on_render.notify();
+            });
+        });
+    });
 
     view! {
         <div class="flex flex-row space-x-1">
@@ -237,7 +283,7 @@ pub fn SheetMusic(
 }
 
 fn create_sync_cursor_effect(
-    osmd: Signal<Option<OpenSheetMusicDisplay>>,
+    osmd: ReadSignal<Option<OpenSheetMusicDisplay>>,
     desired_index: Signal<usize>,
     nth_cursor: usize,
 ) {
