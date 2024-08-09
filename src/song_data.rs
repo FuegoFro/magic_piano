@@ -115,12 +115,10 @@ impl SongData {
                     .position(|k| *k == voice_key)
                     .unwrap_or_else(|| panic!("Unable to find voice index for key {voice_key:?}"));
                 for note in voice_entry.notes() {
-                    let pitch = if let Some(pitch) = note.pitch() {
-                        pitch.half_tone() + 12
-                    } else {
-                        // A rest, ignore
+                    if note.is_rest() {
                         continue;
-                    };
+                    }
+                    let pitch = note.pitch().unwrap().half_tone() + 12;
                     let duration = if let Some(tie) = note.tie() {
                         let tie_key = TieKey::from_tie(&tie);
                         if !seen_ties.insert(tie_key) {

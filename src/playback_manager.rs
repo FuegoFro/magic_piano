@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use bit_set::BitSet;
 use wasm_bindgen::JsValue;
-use web_sys::{AudioContext, GainNode};
+use web_sys::{AudioContext, AudioNode, GainNode};
 
 use crate::sampler::{Sampler, SamplerPlaybackGuard};
 use crate::song_data::SongData;
@@ -14,6 +14,7 @@ use crate::song_data::SongData;
 /// Will panic if any JS operation fails for some reason.
 #[derive(Debug)]
 pub struct PlaybackManager {
+    ctx: AudioContext,
     sampler: Sampler,
     overall_gain: GainNode,
     voice_gains: Vec<GainNode>,
@@ -25,33 +26,32 @@ impl PlaybackManager {
         let ctx = AudioContext::new().unwrap();
         let sampler = Sampler::initialize(ctx.clone(), &NOTES).await;
 
-        let (overall_gain, voice_gains) =
-            Self::create_gains(&ctx).expect("Unable to create playback gain nodes");
+        let overall_gain = Self::create_gain_node(&ctx, &ctx.destination())
+            .expect("Unable to create playback gain nodes");
 
         Self {
+            ctx,
             sampler,
             overall_gain,
-            voice_gains,
+            voice_gains: Vec::new(),
             song_data: None,
         }
     }
 
-    fn create_gains(ctx: &AudioContext) -> Result<(GainNode, Vec<GainNode>), JsValue> {
-        let overall_gain = ctx.create_gain()?;
-        overall_gain.connect_with_audio_node(&ctx.destination())?;
-
-        let voice_gains = (0..4)
-            .map(|_| -> Result<GainNode, JsValue> {
-                let voice_gain = ctx.create_gain()?;
-                voice_gain.connect_with_audio_node(&overall_gain)?;
-                Ok(voice_gain)
-            })
-            .collect::<Result<Vec<GainNode>, JsValue>>()?;
-
-        Ok((overall_gain, voice_gains))
+    fn create_gain_node(ctx: &AudioContext, destination: &AudioNode) -> Result<GainNode, JsValue> {
+        let gain = ctx.create_gain()?;
+        gain.connect_with_audio_node(destination)?;
+        Ok(gain)
     }
 
     pub fn set_song_data(&mut self, song_data: SongData) {
+        // Make sure we have enough gain nodes for the voices in the song.
+        while self.voice_gains.len() < song_data.voices {
+            let voice_gain = Self::create_gain_node(&self.ctx, &self.overall_gain)
+                .expect("Unable to create gain node for an individual voice");
+            self.voice_gains.push(voice_gain);
+        }
+
         self.song_data = Some(song_data);
     }
 
@@ -77,9 +77,7 @@ impl PlaybackManager {
             if !active_voices.contains(voice) {
                 continue;
             }
-            let Some(voice_gain) = self.voice_gains.get(voice) else {
-                continue;
-            };
+            let voice_gain = &self.voice_gains[voice];
 
             for key in notes.iter() {
                 sampler_playback_guards

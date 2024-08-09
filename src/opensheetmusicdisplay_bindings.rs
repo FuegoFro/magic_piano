@@ -193,6 +193,9 @@ extern "C" {
 
     pub type Note;
 
+    #[wasm_bindgen(method, js_name = "isRest")]
+    pub fn is_rest(this: &Note) -> bool;
+
     #[wasm_bindgen(method, getter)]
     pub fn length(this: &Note) -> Fraction;
 

@@ -3,9 +3,9 @@ use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::{JsString, Uint8Array};
 use leptos::{
-    component, create_effect, create_local_resource, create_node_ref, create_signal,
-    create_trigger, event_target_value, spawn_local, view, with, CollectView, IntoAttribute,
-    IntoView, Signal, SignalGet, SignalGetUntracked, SignalSet, SignalUpdate, SignalWith,
+    component, create_effect, create_local_resource, create_memo, create_node_ref,
+    create_owning_memo, create_signal, create_trigger, event_target_value, spawn_local, view, with,
+    CollectView, IntoAttribute, IntoView, Signal, SignalGet, SignalSet, SignalUpdate, SignalWith,
     SignalWithUntracked,
 };
 use web_sys::File;
@@ -20,13 +20,41 @@ use crate::song_data::SongData;
 
 const SONGS: &[&str] = &[
     "A Million Stars",
+    "Alone with the Crowd",
+    "Cheer Up, Charlie",
+    "Close Your Eyes In Sleep",
     "Clouds On Fire",
+    "Crazy Blackbird Tag",
+    "Dear Old Pal of Mine",
+    "Dinah",
+    "Ebb Tide",
+    "I Have Dreamed",
+    "Ireland, My Ireland",
+    "Johanna",
+    "La Vie En Rose",
     "Last Night Was The End Of The World",
     "Like Leave We'll Fall",
     "Lone Prairie",
+    "Lonely For You Am I",
     "Love Come Back To Me",
     "Mam'selle",
+    "New York Ain't New York Anymore",
+    "Ring The Bells of Notre Dame",
+    "She Stole My Heart Away",
+    "Silvery Moonlight",
+    "Sing an Old Time Song Again",
+    "Smile",
+    "Superman",
+    "That's Why I Get the Blues When It Rains",
+    "The Shadow of Your Smile",
+    "This Is All I Ask (Stars in the Sky)",
     "Though You're Gone (I Love You Still)",
+    "To My Beautiful Lifelong Friends",
+    "What Miracle Has Made You The Way You Are",
+    "When You And I Were Young, Maggie",
+    "Without a Song",
+    "Yesterday I Heard the Rain",
+    "You Are The One",
 ];
 
 /// Converts a 0-100 volume to a gain multiplier by interpolating between the given min/max
@@ -53,6 +81,24 @@ enum SongChoice {
     Uploaded { file: File },
 }
 
+fn create_voice_states(num_voices: usize) -> Vec<VoiceState> {
+    let names = if num_voices == 4 {
+        ["Tenor", "Lead", "Bari", "Bass"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect_vec()
+    } else {
+        (1..=num_voices)
+            .map(|num| format!("Voice {num}"))
+            .collect_vec()
+    };
+
+    names
+        .into_iter()
+        .map(|name| VoiceState::new(name.to_string()))
+        .collect_vec()
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let (song_choice, set_song_choice) = create_signal(SongChoice::BuiltIn {
@@ -63,34 +109,6 @@ pub fn App() -> impl IntoView {
     create_effect(move |_| song_choice.with(|_| on_reset_song.notify()));
 
     let file_input_ref = create_node_ref();
-
-    let (overall_volume, set_overall_volume) = create_signal(70u32);
-    // We don't want to overwrite the voice_states directly, but we're wrapping it in a signal so
-    // it's trivially copyable.
-    let (voice_states, _) = create_signal(
-        ["Tenor", "Lead", "Bari", "Bass"]
-            .into_iter()
-            .map(|name| VoiceState::new(name.to_string()))
-            .collect_vec(),
-    );
-    let any_voice_solo =
-        Signal::derive(move || voice_states.with(|vss| vss.iter().any(|vs| vs.solo.get())));
-
-    let active_voices = {
-        let voice_mute_playbacks = voice_states
-            .get_untracked()
-            .into_iter()
-            .map(|vs| vs.mute_playback_signal(any_voice_solo))
-            .collect_vec();
-        Signal::derive(move || {
-            voice_mute_playbacks
-                .iter()
-                .enumerate()
-                .filter(|(_, muted)| !muted.get())
-                .map(|(voice, _)| voice)
-                .collect::<BitSet>()
-        })
-    };
 
     let (start_cursor_index, set_start_cursor_index) = create_signal(0);
     let (current_cursor_index, set_current_cursor_index) = create_signal(0);
@@ -169,6 +187,33 @@ pub fn App() -> impl IntoView {
         });
     });
 
+    let (overall_volume, set_overall_volume) = create_signal(70u32);
+    let num_voices = create_memo(move |_| {
+        song_data.with(|song_data| song_data.as_ref().map(|sd| sd.voices).unwrap_or(4))
+    });
+    let voice_states = create_owning_memo::<Vec<VoiceState>>(move |previous_voice_states| {
+        let num_voices = num_voices.get();
+        if let Some(previous_voice_states) = previous_voice_states {
+            if previous_voice_states.len() == num_voices {
+                return (previous_voice_states, false);
+            }
+        }
+        (create_voice_states(num_voices), true)
+    });
+    let any_voice_solo =
+        Signal::derive(move || voice_states.with(|vss| vss.iter().any(|vs| vs.solo.get())));
+
+    let active_voices = Signal::derive(move || {
+        voice_states
+            .get()
+            .into_iter()
+            .map(|vs| vs.mute_playback_signal(any_voice_solo))
+            .enumerate()
+            .filter(|(_, muted)| !muted.get())
+            .map(|(voice, _)| voice)
+            .collect::<BitSet>()
+    });
+
     let playback_manager =
         create_local_resource(|| (), |_| async { PlaybackManager::initialize().await });
     // Mirror/translate the settings into the playback manager
@@ -194,17 +239,18 @@ pub fn App() -> impl IntoView {
             }
         })
     });
-    for (voice, voice_state) in voice_states.get_untracked().into_iter().enumerate() {
-        let voice_volume = voice_state.volume;
-        create_effect(move |_| {
+
+    create_effect(move |_| {
+        for (voice, voice_state) in voice_states.get().into_iter().enumerate() {
+            let voice_volume = voice_state.volume;
             with!(|playback_manager, voice_volume| {
                 if let Some(playback_manager) = playback_manager {
                     playback_manager
                         .set_voice_gain(voice, volume_to_gain(*voice_volume, -30.0, 5.0));
                 }
-            })
-        });
-    }
+            });
+        }
+    });
 
     let is_loading = Signal::derive(move || {
         playback_manager.loading().get() || song_data.with(|song_data| song_data.is_none())
@@ -270,13 +316,15 @@ pub fn App() -> impl IntoView {
 
             </div>
             <div class="flex flex-row space-x-1">
-                {voice_states
-                    .get_untracked()
-                    .into_iter()
-                    .map(|vs| {
-                        view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo/> }
-                    })
-                    .collect_view()}
+                {move || {
+                    voice_states
+                        .get()
+                        .into_iter()
+                        .map(|vs| {
+                            view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo/> }
+                        })
+                        .collect_view()
+                }}
             </div>
             <div class="flex flex-row space-x-1">
                 <p>"Overall Volume:"</p>

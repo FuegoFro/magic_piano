@@ -215,14 +215,19 @@ pub fn SheetMusic(
                         let use_original_linebreaks = original_linebreaks_input.checked();
                         osmd.with(move |osmd| {
                             let Some(osmd) = osmd.as_ref() else { return };
-                            osmd.rules().set_new_system_at_xml_new_page_attribute(use_original_linebreaks);
-                            osmd.rules().set_new_system_at_xml_new_system_attribute(use_original_linebreaks);
+                            osmd.rules()
+                                .set_new_system_at_xml_new_page_attribute(use_original_linebreaks);
+                            osmd.rules()
+                                .set_new_system_at_xml_new_system_attribute(
+                                    use_original_linebreaks,
+                                );
                             osmd.render();
                             on_render.notify();
                         });
                     }
                 }
             />
+
         </div>
         <div
             class="w-full h-full img-height-revert-layer img-scroll-margin-block-5em"

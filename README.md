@@ -32,8 +32,10 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Expand controls by default if you haven't seen them before
 - [x] Scroll cursor into view if offscreen
 - [x] Better layout (wrap lines, zoom?)
+- [x] Add more tags
+- [x] Handle songs that don't have exactly 4 voices
 - [ ] Drag-and-drop to upload a song
-- [ ] Add more tags
+- [ ] Allow fetching songs from links? Difficult to do reliably without a server due to CORS
 - [ ] Fix lyrics above staff
 - [ ] More obvious song selection
 - [ ] Transpose playback and/or sheet music (independently?)
@@ -42,3 +44,10 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [ ] Handle clicking on notes to set start point?
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
 - [ ] Mobile controls???
+
+# Only tangentially related ideas
+- [ ] Have Trunk use wasm2map for line numbers in panics
+- [ ] Auto generate bindings from ts files
+- [ ] Do nullity checks in bindings
+- [ ] Add ability for OSMD to render lyrics above the staff (duplicated from task above)
+- [ ] Turn on and fix strict mode for ts in osmd
