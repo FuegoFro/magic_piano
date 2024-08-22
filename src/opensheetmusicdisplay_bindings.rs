@@ -85,8 +85,13 @@ extern "C" {
         this: &GraphicalMusicSheet,
     ) -> Vec<VerticalGraphicalStaffEntryContainer>;
 
+    #[wasm_bindgen(method, getter, js_name = "musicPages")]
+    pub fn music_pages(this: &GraphicalMusicSheet) -> Vec<GraphicalMusicPage>;
+
     pub type VerticalGraphicalStaffEntryContainer;
 
+    // NOTE! This actually returns a Vec<Option<GraphicalStaffEntry>> but we can't nest the
+    // generics like that.
     #[wasm_bindgen(method, getter, js_name = "staffEntries")]
     pub fn staff_entries(this: &VerticalGraphicalStaffEntryContainer) -> Vec<GraphicalStaffEntry>;
 
@@ -101,15 +106,72 @@ extern "C" {
     #[wasm_bindgen(method, getter, js_name = "parentMeasure")]
     pub fn parent_measure(this: &GraphicalStaffEntry) -> GraphicalMeasure;
 
+    #[wasm_bindgen(method, getter, js_name = "graphicalVoiceEntries")]
+    pub fn graphical_voice_entries(this: &GraphicalStaffEntry) -> Vec<GraphicalVoiceEntry>;
+
+    #[wasm_bindgen(method, getter, js_name = "graphicalTies")]
+    pub fn graphical_ties(this: &GraphicalStaffEntry) -> Vec<GraphicalTie>;
+
+    pub type GraphicalVoiceEntry;
+
+    #[wasm_bindgen(method, getter, js_name = "parentVoiceEntry")]
+    pub fn parent_voice_entry(this: &GraphicalVoiceEntry) -> VoiceEntry;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn notes(this: &GraphicalVoiceEntry) -> Vec<GraphicalNote>;
+
+    pub type GraphicalNote;
+
+    #[wasm_bindgen(method, getter, js_name = "sourceNote")]
+    pub fn source_note(this: &GraphicalNote) -> Note;
+
+    #[wasm_bindgen(method, js_name = "getSVGGElement")]
+    pub fn get_svg_g_element(this: &GraphicalNote) -> HtmlElement;
+
+    #[wasm_bindgen(method, js_name = "getStemSVG")]
+    pub fn get_stem_svg(this: &GraphicalNote) -> HtmlElement;
+
+    #[wasm_bindgen(method, js_name = "getBeamSVGs")]
+    pub fn get_beam_svgs(this: &GraphicalNote) -> Vec<HtmlElement>;
+
+    pub type GraphicalTie;
+
+    #[wasm_bindgen(method, getter, js_name = "startNote")]
+    pub fn start_note(this: &GraphicalTie) -> GraphicalNote;
+
+    #[wasm_bindgen(method, getter, js_name = "SVGElement")]
+    pub fn svg_element(this: &GraphicalTie) -> HtmlElement;
+
     pub type GraphicalMeasure;
 
     #[wasm_bindgen(method, getter, js_name = "parentMusicSystem")]
     pub fn parent_music_system(this: &GraphicalMeasure) -> MusicSystem;
 
+    pub type GraphicalMusicPage;
+
+    #[wasm_bindgen(method, getter, js_name = "musicSystems")]
+    pub fn music_systems(this: &GraphicalMusicPage) -> Vec<MusicSystem>;
+
+    pub type GraphicalSlur;
+
+    #[wasm_bindgen(method, getter, js_name = "SVGElement")]
+    pub fn svg_element(this: &GraphicalSlur) -> HtmlElement;
+
+    #[wasm_bindgen(method, getter)]
+    pub fn slur(this: &GraphicalSlur) -> Slur;
+
     pub type MusicSystem;
 
     #[wasm_bindgen(method, getter)]
     pub fn id(this: &MusicSystem) -> u32;
+
+    #[wasm_bindgen(method, getter, js_name = "staffLines")]
+    pub fn staff_lines(this: &MusicSystem) -> Vec<StaffLine>;
+
+    pub type StaffLine;
+
+    #[wasm_bindgen(method, getter, js_name = "graphicalSlurs")]
+    pub fn graphical_slurs(this: &StaffLine) -> Vec<GraphicalSlur>;
 
     pub type BoundingBox;
 
@@ -229,6 +291,11 @@ extern "C" {
 
     #[wasm_bindgen(method, getter, js_name = "StartNote")]
     pub fn start_note(this: &Tie) -> Note;
+
+    pub type Slur;
+
+    #[wasm_bindgen(method, getter, js_name = "StartNote")]
+    pub fn start_note(this: &Slur) -> Note;
 
     pub type Fraction;
 

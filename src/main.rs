@@ -6,6 +6,7 @@ use crate::components::app::App;
 
 mod components;
 mod future_util;
+mod html_util;
 mod opensheetmusicdisplay_bindings;
 mod playback_manager;
 mod sampler;

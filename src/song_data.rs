@@ -5,13 +5,39 @@ use bit_set::BitSet;
 use fraction::Fraction;
 use itertools::Itertools;
 
-use crate::opensheetmusicdisplay_bindings::{OpenSheetMusicDisplay, Tie};
+use crate::opensheetmusicdisplay_bindings::{OpenSheetMusicDisplay, Tie, VoiceEntry};
+
+#[derive(Clone)]
+pub struct VoiceIndexMapping(Vec<(u32, u32)>);
+
+impl FromIterator<(u32, u32)> for VoiceIndexMapping {
+    fn from_iter<T: IntoIterator<Item = (u32, u32)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl VoiceIndexMapping {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn index_for_voice_entry(&self, voice_entry: &VoiceEntry) -> usize {
+        let voice_key = (
+            voice_entry
+                .parent_source_staff_entry()
+                .parent_staff()
+                .id_in_music_sheet(),
+            voice_entry.parent_voice().voice_id(),
+        );
+        self.0
+            .iter()
+            .position(|k| *k == voice_key)
+            .unwrap_or_else(|| panic!("Unable to find voice index for key {voice_key:?}"))
+    }
+}
 
 #[derive(Clone)]
 pub struct SongData {
-    // TODO - Use this when constructing voice states
-    #[allow(dead_code)]
-    pub voices: usize,
+    pub voice_index_mapping: VoiceIndexMapping,
     pub slices: Vec<TimeSlice>,
 }
 
@@ -57,7 +83,7 @@ impl TieKey {
 impl SongData {
     pub fn from_osmd(osmd: &OpenSheetMusicDisplay) -> Self {
         // Build the (staff_id, voice_id) pairs and sort them. Use position as final voice index.
-        let voice_keys = osmd
+        let voice_index_mapping = osmd
             .sheet()
             .staves()
             .into_iter()
@@ -67,16 +93,17 @@ impl SongData {
             })
             .unique()
             .sorted()
-            .collect_vec();
+            .collect::<VoiceIndexMapping>();
         let cursor = osmd.cursor().unwrap();
         cursor.reset();
 
         // Iterate through to build the slices.
         // Store (voice, active pitch, end timestamp)
-        // Ignore subsequent items in ties (use start time/voice/pitch/duration as key?)
+        // Ignore subsequent items in ties (use start time/voice/pitch/duration as key)
         //  where time is voice entry timestamp + measure absolute timestamp?
-        let mut active_notes_by_voice: Vec<Vec<(u32, Fraction)>> =
-            (0..voice_keys.len()).map(|_| Vec::new()).collect_vec();
+        let mut active_notes_by_voice: Vec<Vec<(u32, Fraction)>> = (0..voice_index_mapping.len())
+            .map(|_| Vec::new())
+            .collect_vec();
         let mut seen_ties = HashSet::new();
         let mut slices = Vec::new();
         let mut cursor_index = 0;
@@ -103,17 +130,7 @@ impl SongData {
                 continue;
             };
             for voice_entry in current_voice_entries {
-                let voice_key = (
-                    voice_entry
-                        .parent_source_staff_entry()
-                        .parent_staff()
-                        .id_in_music_sheet(),
-                    voice_entry.parent_voice().voice_id(),
-                );
-                let voice = voice_keys
-                    .iter()
-                    .position(|k| *k == voice_key)
-                    .unwrap_or_else(|| panic!("Unable to find voice index for key {voice_key:?}"));
+                let voice = voice_index_mapping.index_for_voice_entry(&voice_entry);
                 for note in voice_entry.notes() {
                     if note.is_rest() {
                         continue;
@@ -150,7 +167,7 @@ impl SongData {
         }
 
         Self {
-            voices: voice_keys.len(),
+            voice_index_mapping,
             slices,
         }
     }

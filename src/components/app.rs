@@ -149,7 +149,12 @@ pub fn App() -> impl IntoView {
 
     let (overall_volume, set_overall_volume) = create_signal(70u32);
     let num_voices = create_memo(move |_| {
-        song_data.with(|song_data| song_data.as_ref().map(|sd| sd.voices).unwrap_or(4))
+        song_data.with(|song_data| {
+            song_data
+                .as_ref()
+                .map(|sd| sd.voice_index_mapping.len())
+                .unwrap_or(4)
+        })
     });
     let voice_states = create_owning_memo::<Vec<VoiceState>>(move |previous_voice_states| {
         let num_voices = num_voices.get();
@@ -303,6 +308,7 @@ pub fn App() -> impl IntoView {
                 // We always want this to be here so it can layout properly in the background,
                 // but sometimes we overlay it with a loading div.
                 <SheetMusic
+                    active_voices=active_voices
                     song_data=song_data
                     start_cursor_index=start_cursor_index
                     current_cursor_index=current_cursor_index

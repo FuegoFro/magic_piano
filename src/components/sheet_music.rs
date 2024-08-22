@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use bit_set::BitSet;
 use itertools::Itertools;
 use js_sys::JsString;
 use leptos::{
@@ -8,11 +9,13 @@ use leptos::{
     SignalGet, SignalGetUntracked, SignalSet, SignalWith, SignalWithUntracked, WriteSignal,
 };
 use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::components::app::SongChoice;
 use crate::components::keyboard_listener::LETTERS;
 use crate::future_util::PromiseAsFuture;
+use crate::html_util::HtmlCollectionIntoIterator;
 use crate::opensheetmusicdisplay_bindings::{CursorOptions, OpenSheetMusicDisplay};
 use crate::song_data::SongData;
 
@@ -20,6 +23,7 @@ const KEY_HINT_CONTAINER_ID: &str = "magicPianoKeyHintContainer";
 
 #[component]
 pub fn SheetMusic(
+    #[prop(into)] active_voices: Signal<BitSet>,
     #[prop(into)] song_data: Signal<Option<SongData>>,
     #[prop(into)] start_cursor_index: Signal<usize>,
     #[prop(into)] current_cursor_index: Signal<usize>,
@@ -142,6 +146,125 @@ pub fn SheetMusic(
         svg.append_child(&view).unwrap();
 
         Some(())
+    });
+
+    // Sync the note colors with the active voices
+    create_effect(move |_| {
+        on_render.track();
+        with!(|osmd, song_data, active_voices| {
+            let song_data = song_data.as_ref()?;
+            // We pull elements to re-color from a bunch of different places (unfortunately,
+            // OSMD doesn't make this easy for us). Each of the `*_elements` iterators below
+            // ends up being an iterator of `(active, element): (bool, HtmlElement)`. The comments
+            // just before each of them is how to access the voice entry used to compute `active`
+            // and the `element` itself, respectively, from JS.
+
+            // osmd.graphic.musicPages[x].musicSystems[x].staffLines[x].graphicalSlurs[x].slur.startNote.voiceEntry
+            // osmd.graphic.musicPages[x].musicSystems[x].staffLines[x].graphicalSlurs[x].SVGElement
+            let slur_elements = osmd
+                .as_ref()?
+                .graphic()?
+                .music_pages()
+                .into_iter()
+                .flat_map(|pages| pages.music_systems().into_iter())
+                .flat_map(|systems| systems.staff_lines().into_iter())
+                .flat_map(|lines| lines.graphical_slurs().into_iter())
+                .map(|graphical_slur| {
+                    let active = active_voices.contains(
+                        song_data.voice_index_mapping.index_for_voice_entry(
+                            &graphical_slur.slur().start_note().voice_entry(),
+                        ),
+                    );
+                    (active, graphical_slur.svg_element())
+                });
+
+            // osmd.graphic.verticalGraphicalStaffEntryContainers[x].staffEntries[x].graphicalTies[x].startNote.sourceNote.voiceEntry
+            // osmd.graphic.verticalGraphicalStaffEntryContainers[x].staffEntries[x].graphicalTies[x].SVGElement
+            let tie_elements = osmd
+                .as_ref()?
+                .graphic()?
+                .vertical_graphical_staff_entry_containers()
+                .into_iter()
+                .flat_map(|vgsec| vgsec.staff_entries().into_iter())
+                .filter(|se| !se.is_undefined())
+                .flat_map(|graphical_staff_entry| {
+                    graphical_staff_entry.graphical_ties().into_iter()
+                })
+                .map(|graphical_tie| {
+                    let active = active_voices.contains(
+                        song_data.voice_index_mapping.index_for_voice_entry(
+                            &graphical_tie.start_note().source_note().voice_entry(),
+                        ),
+                    );
+                    (active, graphical_tie.svg_element())
+                });
+
+            // osmd.graphic.verticalGraphicalStaffEntryContainers[x].staffEntries[x].graphicalVoiceEntries[x].parentVoiceEntry
+            // osmd.graphic.verticalGraphicalStaffEntryContainers[x].staffEntries[x].graphicalVoiceEntries[x].notes[x].getSVGGElement().getElementsByTagName("path")
+            let note_beam_stem_elements = osmd
+                .as_ref()?
+                .graphic()?
+                .vertical_graphical_staff_entry_containers()
+                .into_iter()
+                .flat_map(|vgsec| vgsec.staff_entries().into_iter())
+                .filter(|se| !se.is_undefined())
+                .flat_map(|graphical_staff_entry| {
+                    graphical_staff_entry.graphical_voice_entries().into_iter()
+                })
+                .flat_map(|graphical_voice_entry| {
+                    let active = active_voices.contains(
+                        song_data
+                            .voice_index_mapping
+                            .index_for_voice_entry(&graphical_voice_entry.parent_voice_entry()),
+                    );
+                    graphical_voice_entry
+                        .notes()
+                        .into_iter()
+                        // Get all the elements that might be or have paths we want to color
+                        .flat_map(|graphical_note| {
+                            let g_element = graphical_note.get_svg_g_element();
+                            let stem_element = graphical_note.get_stem_svg();
+                            let beam_elements = graphical_note.get_beam_svgs();
+
+                            beam_elements.into_iter().chain([g_element, stem_element])
+                        })
+                        .map(move |element| (active, element))
+                });
+
+            // Now that we have our `(active, element)` pairs, get the `<path>` tags from the
+            // elements and color them accordingly.
+            slur_elements
+                .chain(tie_elements)
+                .chain(note_beam_stem_elements)
+                .filter(|(_, element)| !element.is_undefined() && !element.is_null())
+                // Extract the path elements/children
+                .flat_map(|(active, element)| {
+                    if &element.tag_name() == "path" {
+                        vec![(active, element.dyn_into::<web_sys::Element>().unwrap())]
+                    } else {
+                        element
+                            .get_elements_by_tag_name("path")
+                            .into_iter()
+                            .map(|e| (active, e))
+                            .collect_vec()
+                    }
+                })
+                // Finally, color it!
+                .for_each(|(active, path_element)| {
+                    let color = if active { "#000000" } else { "#aaaaaa" };
+                    let stroke = path_element.get_attribute("stroke");
+                    // If we are Some and not "none"
+                    if stroke.map(|stroke| stroke != "none").unwrap_or(false) {
+                        path_element.set_attribute("stroke", color).unwrap()
+                    }
+                    let fill = path_element.get_attribute("fill");
+                    if fill.map(|fill| fill != "none").unwrap_or(false) {
+                        path_element.set_attribute("fill", color).unwrap()
+                    }
+                });
+
+            Some(()) // (Function returns `Option` so we can conveniently use `?`)
+        });
     });
 
     container_ref.on_load(move |container| {

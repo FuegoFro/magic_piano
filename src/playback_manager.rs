@@ -46,7 +46,7 @@ impl PlaybackManager {
 
     pub fn set_song_data(&mut self, song_data: SongData) {
         // Make sure we have enough gain nodes for the voices in the song.
-        while self.voice_gains.len() < song_data.voices {
+        while self.voice_gains.len() < song_data.voice_index_mapping.len() {
             let voice_gain = Self::create_gain_node(&self.ctx, &self.overall_gain)
                 .expect("Unable to create gain node for an individual voice");
             self.voice_gains.push(voice_gain);

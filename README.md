@@ -34,12 +34,12 @@ I enjoy using the piano to learn music, I think because it gives me a lot of con
 - [x] Better layout (wrap lines, zoom?)
 - [x] Add more tags
 - [x] Handle songs that don't have exactly 4 voices
+- [x] Grey out notes for muted voices
 - [ ] Drag-and-drop to upload a song
 - [ ] Allow fetching songs from links? Difficult to do reliably without a server due to CORS
 - [ ] Fix lyrics above staff
 - [ ] More obvious song selection
 - [ ] Transpose playback and/or sheet music (independently?)
-- [ ] Grey out notes for muted voices
 - [ ] Have cursor highlight the entire range, eg with tied notes
 - [ ] Handle clicking on notes to set start point?
 - [ ] Various web accoutrements (favicon, title, ...metadata?)
