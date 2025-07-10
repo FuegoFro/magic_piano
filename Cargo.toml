@@ -7,22 +7,22 @@ edition = "2021"
 
 [dependencies]
 bit-set = "0.8.0"
-codee = "0.1.2"
+codee = "0.3.2"
 console_error_panic_hook = "0.1"
 console_log = "1.0.0"
 fraction = "0.15.3"
-futures = "0.3.30"
+futures = "0.3.31"
 gloo = "0.11.0"
-itertools = "0.13.0"
-js-sys = "0.3.61"
+itertools = "0.14.0"
+js-sys = "0.3.77"
 leptos = { version = "0.8.2", features = ["csr"] }
-leptos-use = "0.16.0"
+leptos-use = "0.16.2"
 log = "0.4"
-once_cell = "1.19.0"
-regex = "1.10.5"
-wasm-bindgen = "0.2.92"
-wasm-bindgen-futures = "0.4.42"
-serde = { version = "1.0.204", features = ["derive"] }
+once_cell = "1.21.3"
+regex = "1.11.1"
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+serde = { version = "1.0.219", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
 
 [dependencies.web-sys]
