@@ -17,5 +17,5 @@ fn main() {
     console_log::init_with_level(log::Level::Info).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    mount_to_body(|| view! { <App/> });
+    mount_to_body(|| view! { <App /> });
 }

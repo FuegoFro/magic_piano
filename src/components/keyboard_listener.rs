@@ -104,13 +104,10 @@ pub fn KeyboardListener(
     let details_node_ref = NodeRef::new();
     let (has_seen_controls, set_has_seen_controls, _) =
         use_local_storage::<bool, FromToStringCodec>("has_seen_controls");
-    // Annoyingly the mere presence of this attribute determines whether it's open
-    // TODO RIGHTNOW - Verify this works
-    let is_open = !has_seen_controls.get_untracked();
 
     view! {
         <details
-            open=is_open
+            open={!has_seen_controls.get_untracked()}
             class="outline outline-2 outline-slate-500 bg-slate-100 p-1 rounded"
             node_ref=details_node_ref
             on:toggle=move |_| {
@@ -164,7 +161,7 @@ pub fn KeyboardListener(
                 "can be adjusted with the left/right arrows. It can be reset with backtick ("
                 <code class="bg-slate-200">"`"</code> ")."
             </p>
-            <img class="my-1" src="examples/keyboard.png"/>
+            <img class="my-1" src="examples/keyboard.png" />
             <p>"(you can collapse these instructions by clicking on \"Controls\" above)"</p>
         </details>
     }

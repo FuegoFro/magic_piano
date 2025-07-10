@@ -217,12 +217,11 @@ pub fn App() -> impl IntoView {
                 set_current_cursor_index=set_current_cursor_index
                 on_reset_song=on_reset_song
             />
-            <br/>
+            <br />
             <div class="flex flex-row items-baseline space-x-1">
                 <p>"Pick a song:"</p>
                 <select
                     class="border"
-                    // TODO RIGHTNOW - Verify this works
                     on:change:target=move |ev| {
                         let new_value = ev.target().value();
                         set_song_choice
@@ -232,16 +231,11 @@ pub fn App() -> impl IntoView {
                     }
                 >
 
-                    // Apparently the API for initial selection is adding `selected`
-                    // to the corresponding option >.>
-                    // Also if this comment is inside the following block leptosfmt loses its mind
                     {SONGS
                         .iter()
                         .map(|&song_option| {
-                    // TODO RIGHTNOW - Verify this works
-                    let is_selected = SONGS[0] == song_option;
                             view! {
-                                <option selected=is_selected value=song_option>
+                                <option selected={SONGS[0] == song_option} value=song_option>
                                     {song_option}
                                 </option>
                             }
@@ -271,7 +265,7 @@ pub fn App() -> impl IntoView {
                         .get()
                         .into_iter()
                         .map(|vs| {
-                            view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo/> }
+                            view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo /> }
                         })
                         .collect_vec()
                 }}
