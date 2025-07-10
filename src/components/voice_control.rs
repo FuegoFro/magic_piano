@@ -1,7 +1,4 @@
-use leptos::{
-    component, event_target_value, view, IntoView, RwSignal, Signal, SignalGet, SignalSet,
-    SignalUpdate,
-};
+use leptos::prelude::*;
 
 #[derive(Clone)]
 pub struct VoiceState {
@@ -35,7 +32,7 @@ pub fn VoiceControl(
 ) -> impl IntoView {
     view! {
         <div class="flex flex-col items-center p-4 border border-black border-solid rounded-sm">
-            <p class:text-red-600={voice_state.mute_playback_signal(any_voice_solo)}>{voice_state.name}</p>
+            <p class:text-red-600={voice_state.mute_playback_signal(any_voice_solo)}>{voice_state.name.clone()}</p>
             <div class="flex flex-row space-x-1">
                 <button
                     class="border border-black rounded-sm px-1"
@@ -52,8 +49,9 @@ pub fn VoiceControl(
             <input type="range"
                 max="100"
                 prop:value={voice_state.volume}
-                on:input=move |e| {
-                    voice_state.volume.set(event_target_value(&e).parse().unwrap());
+                // TODO RIGHTNOW - Verify this works
+                on:input:target=move |ev| {
+                    voice_state.volume.set(ev.target().value().parse().unwrap());
                 }
                 />
         </div>

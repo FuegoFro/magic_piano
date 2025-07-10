@@ -2,11 +2,7 @@ use bit_set::BitSet;
 use gloo::net::http::Request;
 use itertools::Itertools;
 use js_sys::{JsString, Uint8Array};
-use leptos::{
-    component, create_effect, create_local_resource, create_memo, create_node_ref,
-    create_owning_memo, create_signal, create_trigger, event_target_value, view, with, CollectView,
-    IntoAttribute, IntoView, Signal, SignalGet, SignalSet, SignalUpdate, SignalWith,
-};
+use leptos::prelude::*;
 use web_sys::File;
 
 use crate::components::keyboard_listener::KeyboardListener;
@@ -99,56 +95,54 @@ fn create_voice_states(num_voices: usize) -> Vec<VoiceState> {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (song_choice, set_song_choice) = create_signal(SongChoice::BuiltIn {
+    let (song_choice, set_song_choice) = signal_local(SongChoice::BuiltIn {
         name: SONGS[0].to_string(),
     });
-    let on_reset_song = create_trigger();
+    let on_reset_song = Trigger::new();
     // Reset whenever the song name changes
-    create_effect(move |_| song_choice.with(|_| on_reset_song.notify()));
+    Effect::new(move |_| song_choice.with(|_| on_reset_song.notify()));
 
-    let file_input_ref = create_node_ref();
+    let file_input_ref = NodeRef::new();
 
-    let (start_cursor_index, set_start_cursor_index) = create_signal(0);
-    let (current_cursor_index, set_current_cursor_index) = create_signal(0);
+    let (start_cursor_index, set_start_cursor_index) = signal(0);
+    let (current_cursor_index, set_current_cursor_index) = signal(0);
 
-    let (song_data, set_song_data) = create_signal::<Option<SongData>>(None);
-    let song_raw_data = create_local_resource(
-        move || song_choice.get(),
-        move |song_choice| async move {
-            let data = match song_choice {
-                SongChoice::BuiltIn { name } => {
-                    Request::get(&format!("examples/{name}.mxl"))
-                        .send()
-                        .await
-                        .unwrap()
-                        // If we really cared about the extra copy of the data below we could use `.body()`
-                        // here instead.
-                        .binary()
-                        .await
-                        .unwrap()
-                }
-                SongChoice::Uploaded { file } => {
-                    // It's probably a bit inefficient to read this data into Rust-land and then
-                    // pass it back to JS-land, but oh well.
-                    let blob: &web_sys::Blob = file.as_ref();
-                    let array_buffer = blob.array_buffer().into_future().await.unwrap();
-                    let typed_buff: Uint8Array = Uint8Array::new(&array_buffer);
-                    let mut data = vec![0; typed_buff.length() as usize];
-                    typed_buff.copy_to(&mut data);
-                    data
-                }
-            };
-            // The library takes in the binary data as a string (*shudders*) and JS uses arbitrary 16-bit
-            // character codes (nominally utf-16, but doesn't need to be valid utf-16), so we need to make
-            // these u16's and then shove it into a JsString. Interestingly that means just left-padding
-            // them with 0's, not packing two u8's into a single u16 (which didn't work).
-            let u16_data = data.iter().map(|d| *d as u16).collect_vec();
-            JsString::from_char_code(&u16_data)
-        },
-    );
+    let (song_data, set_song_data) = signal::<Option<SongData>>(None);
+    let song_raw_data = LocalResource::new(move || async move {
+        let song_choice = song_choice.get();
+        let data = match song_choice {
+            SongChoice::BuiltIn { name } => {
+                Request::get(&format!("examples/{name}.mxl"))
+                    .send()
+                    .await
+                    .unwrap()
+                    // If we really cared about the extra copy of the data below we could use `.body()`
+                    // here instead.
+                    .binary()
+                    .await
+                    .unwrap()
+            }
+            SongChoice::Uploaded { file } => {
+                // It's probably a bit inefficient to read this data into Rust-land and then
+                // pass it back to JS-land, but oh well.
+                let blob: &web_sys::Blob = file.as_ref();
+                let array_buffer = blob.array_buffer().into_future().await.unwrap();
+                let typed_buff: Uint8Array = Uint8Array::new(&array_buffer);
+                let mut data = vec![0; typed_buff.length() as usize];
+                typed_buff.copy_to(&mut data);
+                data
+            }
+        };
+        // The library takes in the binary data as a string (*shudders*) and JS uses arbitrary 16-bit
+        // character codes (nominally utf-16, but doesn't need to be valid utf-16), so we need to make
+        // these u16's and then shove it into a JsString. Interestingly that means just left-padding
+        // them with 0's, not packing two u8's into a single u16 (which didn't work).
+        let u16_data = data.iter().map(|d| *d as u16).collect_vec();
+        JsString::from_char_code(&u16_data)
+    });
 
-    let (overall_volume, set_overall_volume) = create_signal(70u32);
-    let num_voices = create_memo(move |_| {
+    let (overall_volume, set_overall_volume) = signal(70u32);
+    let num_voices = Memo::new(move |_| {
         song_data.with(|song_data| {
             song_data
                 .as_ref()
@@ -156,7 +150,7 @@ pub fn App() -> impl IntoView {
                 .unwrap_or(4)
         })
     });
-    let voice_states = create_owning_memo::<Vec<VoiceState>>(move |previous_voice_states| {
+    let voice_states = Memo::new_owning(move |previous_voice_states: Option<Vec<VoiceState>>| {
         let num_voices = num_voices.get();
         if let Some(previous_voice_states) = previous_voice_states {
             if previous_voice_states.len() == num_voices {
@@ -179,46 +173,39 @@ pub fn App() -> impl IntoView {
             .collect::<BitSet>()
     });
 
-    let playback_manager =
-        create_local_resource(|| (), |_| async { PlaybackManager::initialize().await });
+    let playback_manager: LocalResource<RwSignal<PlaybackManager, LocalStorage>> =
+        LocalResource::new(|| async { RwSignal::new_local(PlaybackManager::initialize().await) });
     // Mirror/translate the settings into the playback manager
-    create_effect(move |_| {
-        // Important! Don't blindly call update on the resource since that'll overwrite it during
-        // init. Only update it if it already exists.
-        if playback_manager.loading().get() {
-            return;
+    Effect::new(move |_| {
+        if let (Some(playback_manager), Some(song_data)) =
+            (&*playback_manager.read(), &*song_data.read())
+        {
+            playback_manager.write().set_song_data(song_data.clone());
         }
-        playback_manager.update(|playback_manager| {
-            let Some(playback_manager) = playback_manager else {
-                return;
-            };
-            if let Some(song_data) = song_data.get() {
-                playback_manager.set_song_data(song_data);
-            }
-        });
     });
-    create_effect(move |_| {
-        with!(|playback_manager, overall_volume| {
-            if let Some(playback_manager) = playback_manager {
-                playback_manager.set_overall_gain(volume_to_gain(*overall_volume, -30.0, 5.0));
-            }
-        })
+    Effect::new(move |_| {
+        if let Some(playback_manager) = &*playback_manager.read() {
+            playback_manager.write().set_overall_gain(volume_to_gain(
+                *overall_volume.read(),
+                -30.0,
+                5.0,
+            ));
+        }
     });
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         for (voice, voice_state) in voice_states.get().into_iter().enumerate() {
-            let voice_volume = voice_state.volume;
-            with!(|playback_manager, voice_volume| {
-                if let Some(playback_manager) = playback_manager {
-                    playback_manager
-                        .set_voice_gain(voice, volume_to_gain(*voice_volume, -30.0, 5.0));
-                }
-            });
+            if let Some(playback_manager) = &*playback_manager.read() {
+                playback_manager.write().set_voice_gain(
+                    voice,
+                    volume_to_gain(*voice_state.volume.read(), -30.0, 5.0),
+                );
+            }
         }
     });
 
     let is_loading = Signal::derive(move || {
-        playback_manager.loading().get() || song_data.with(|song_data| song_data.is_none())
+        playback_manager.with(|pm| pm.is_none()) || song_data.with(|song_data| song_data.is_none())
     });
 
     view! {
@@ -235,8 +222,9 @@ pub fn App() -> impl IntoView {
                 <p>"Pick a song:"</p>
                 <select
                     class="border"
-                    on:change=move |e| {
-                        let new_value = event_target_value(&e);
+                    // TODO RIGHTNOW - Verify this works
+                    on:change:target=move |ev| {
+                        let new_value = ev.target().value();
                         set_song_choice
                             .set(SongChoice::BuiltIn {
                                 name: new_value,
@@ -250,24 +238,21 @@ pub fn App() -> impl IntoView {
                     {SONGS
                         .iter()
                         .map(|&song_option| {
-                            let attrs = if SONGS[0] == song_option {
-                                vec![("selected", true.into_attribute())]
-                            } else {
-                                vec![]
-                            };
+                    // TODO RIGHTNOW - Verify this works
+                    let is_selected = SONGS[0] == song_option;
                             view! {
-                                <option {..attrs} value=song_option>
+                                <option selected=is_selected value=song_option>
                                     {song_option}
                                 </option>
                             }
                         })
-                        .collect_view()}
+                        .collect_vec()}
                 </select>
             </div>
             <div class="flex flex-row items-baseline space-x-1">
                 <p>"Or upload a song: "</p>
                 <input
-                    _ref=file_input_ref
+                    node_ref=file_input_ref
                     type="file"
                     accept=".xml,.mxl,.musicxml"
                     multiple=false
@@ -288,7 +273,7 @@ pub fn App() -> impl IntoView {
                         .map(|vs| {
                             view! { <VoiceControl voice_state=vs any_voice_solo=any_voice_solo/> }
                         })
-                        .collect_view()
+                        .collect_vec()
                 }}
 
             </div>
@@ -298,8 +283,8 @@ pub fn App() -> impl IntoView {
                     type="range"
                     max=100
                     prop:value=overall_volume
-                    on:input=move |e| {
-                        set_overall_volume.set(event_target_value(&e).parse().unwrap());
+                    on:input:target=move |ev| {
+                        set_overall_volume.set(ev.target().value().parse().unwrap());
                     }
                 />
 

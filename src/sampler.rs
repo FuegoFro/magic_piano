@@ -9,7 +9,9 @@ use log::error;
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, AudioNode, GainNode};
+use web_sys::{
+    AudioBuffer, AudioBufferSourceNode, AudioContext, AudioNode, AudioScheduledSourceNode, GainNode,
+};
 
 use crate::future_util::PromiseAsFuture;
 
@@ -32,7 +34,8 @@ impl SamplerPlaybackGuard {
         self.gain
             .gain()
             .linear_ramp_to_value_at_time(0.0, end_time)?;
-        self.buffer_source.stop_with_when(end_time)?;
+        // Need to disambiguate between `AudioScheduledSourceNode` and `AudioBufferSourceNode` copies of the method.
+        AudioScheduledSourceNode::stop_with_when(&self.buffer_source, end_time)?;
 
         Ok(())
     }

@@ -3,16 +3,12 @@ use std::collections::HashMap;
 use bit_set::BitSet;
 use itertools::Itertools;
 use js_sys::JsString;
-use leptos::{
-    component, create_effect, create_node_ref, create_signal, create_trigger, document,
-    spawn_local, view, window, with, CollectView, IntoView, ReadSignal, Resource, Signal,
-    SignalGet, SignalGetUntracked, SignalSet, SignalWith, SignalWithUntracked, WriteSignal,
-};
+use leptos::prelude::*;
+use leptos::task::spawn_local;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
-use crate::components::app::SongChoice;
 use crate::components::keyboard_listener::LETTERS;
 use crate::future_util::PromiseAsFuture;
 use crate::html_util::HtmlCollectionIntoIterator;
@@ -27,18 +23,18 @@ pub fn SheetMusic(
     #[prop(into)] song_data: Signal<Option<SongData>>,
     #[prop(into)] start_cursor_index: Signal<usize>,
     #[prop(into)] current_cursor_index: Signal<usize>,
-    #[prop(into)] song_raw_data: Resource<SongChoice, JsString>,
+    #[prop(into)] song_raw_data: LocalResource<JsString>,
     #[prop(into)] set_song_data: WriteSignal<Option<SongData>>,
 ) -> impl IntoView {
-    let (osmd, set_osmd) = create_signal::<Option<OpenSheetMusicDisplay>>(None);
-    let container_ref = create_node_ref();
-    let on_render = create_trigger();
+    let (osmd, set_osmd) = signal_local::<Option<OpenSheetMusicDisplay>>(None);
+    let container_ref = NodeRef::new();
+    let on_render = Trigger::new();
 
     // Sync the indices to show to the cursor
     create_sync_cursor_effect(osmd, start_cursor_index, 1);
     create_sync_cursor_effect(osmd, current_cursor_index, 0);
     // When the start cursor is moved, update the key hints
-    create_effect(move |_| {
+    Effect::new(move |_| {
         let start_cursor_index = start_cursor_index.get();
         // Rerun this if we re-render
         on_render.track();
@@ -139,20 +135,30 @@ pub fn SheetMusic(
                             </text>
                         }
                     })
-                    .collect_view()}
+                    .collect_vec()}
 
             </g>
         };
-        svg.append_child(&view).unwrap();
+        svg.append_child(&view.into_render().build()).unwrap();
 
         Some(())
     });
 
     // Sync the note colors with the active voices
-    create_effect(move |_| {
+    Effect::new(move |_| {
         on_render.track();
-        with!(|osmd, song_data, active_voices| {
-            let song_data = song_data.as_ref()?;
+
+        (|| -> Option<()> {
+            let osmd = osmd.read();
+            let song_data = song_data.read();
+            let active_voices = active_voices.read();
+            let osmd = &*osmd;
+            let song_data = &*song_data;
+            let active_voices = &*active_voices;
+
+            let Some(song_data) = song_data else {
+                return None;
+            };
             // We pull elements to re-color from a bunch of different places (unfortunately,
             // OSMD doesn't make this easy for us). Each of the `*_elements` iterators below
             // ends up being an iterator of `(active, element): (bool, HtmlElement)`. The comments
@@ -264,7 +270,7 @@ pub fn SheetMusic(
                 });
 
             Some(()) // (Function returns `Option` so we can conveniently use `?`)
-        });
+        })();
     });
 
     container_ref.on_load(move |container| {
@@ -297,25 +303,22 @@ pub fn SheetMusic(
         set_osmd.set(Some(osmd));
     });
 
-    let zoom_input_node_ref = create_node_ref();
-    let (zoom_value, set_zoom_value) = create_signal(75f64);
-    let original_linebreaks_node_ref = create_node_ref();
+    let zoom_input_node_ref = NodeRef::new();
+    let (zoom_value, set_zoom_value) = signal(75f64);
+    let original_linebreaks_node_ref = NodeRef::new();
 
     // Load the song into osmd and extract the SongData.
     // Not using create_local_resource because we depend on osmd which doesn't impl Eq, which is
     // needed for Resource inputs.
-    create_effect(move |_| {
+    Effect::new(move |_| {
         // Important that we track the usage of both of these before we enter `spawn_local`
-        let load_promise = with!(|osmd, song_raw_data| {
-            let Some(osmd) = osmd else { return None };
-            let Some(song_raw_data) = song_raw_data else {
-                return None;
+        let load_promise =
+            if let (Some(osmd), Some(song_raw_data)) = (&*osmd.read(), &*song_raw_data.read()) {
+                osmd.load(song_raw_data)
+            } else {
+                return;
             };
-            Some(osmd.load(song_raw_data))
-        });
-        let Some(load_promise) = load_promise else {
-            return;
-        };
+
         spawn_local(async move {
             load_promise.into_future().await.unwrap();
             // We tracked this usage above
@@ -346,7 +349,7 @@ pub fn SheetMusic(
         <div class="flex flex-row space-x-1">
             <p>"Zoom: "</p>
             <input
-                _ref=zoom_input_node_ref
+                node_ref=zoom_input_node_ref
                 type="range"
                 min="25"
                 max="200"
@@ -370,14 +373,14 @@ pub fn SheetMusic(
             />
 
             <datalist id="zoom_values">
-                {(25..=200).step_by(25).map(|v| view! { <option value=v></option> }).collect_view()}
+                {(25..=200).step_by(25).map(|v| view! { <option value=v></option> }).collect_vec()}
             </datalist>
             <p>{zoom_value} "%"</p>
         </div>
         <div class="flex flex-row items-baseline space-x-1">
             <p>"Use original line breaks:"</p>
             <input
-                _ref=original_linebreaks_node_ref
+                node_ref=original_linebreaks_node_ref
                 type="checkbox"
                 on:change=move |_| {
                     if let Some(original_linebreaks_input) = original_linebreaks_node_ref.get() {
@@ -400,18 +403,18 @@ pub fn SheetMusic(
         </div>
         <div
             class="w-full h-full img-height-revert-layer img-scroll-margin-block-5em"
-            _ref=container_ref
+            node_ref=container_ref
         ></div>
     }
 }
 
 fn create_sync_cursor_effect(
-    osmd: ReadSignal<Option<OpenSheetMusicDisplay>>,
+    osmd: ReadSignal<Option<OpenSheetMusicDisplay>, LocalStorage>,
     desired_index: Signal<usize>,
     nth_cursor: usize,
 ) {
-    let (index_last_shown, set_index_last_shown) = create_signal(0);
-    create_effect(move |_| {
+    let (index_last_shown, set_index_last_shown) = signal(0);
+    Effect::new(move |_| {
         // Important that these happen before we might early-exit
         let to_show = desired_index.get() as i32;
         let index_last_shown = index_last_shown.get();
@@ -448,11 +451,12 @@ fn create_sync_cursor_effect(
 
             cursor
                 .cursor_element()
-                .scroll_into_view_with_scroll_into_view_options(
-                    ScrollIntoViewOptions::new()
-                        .behavior(ScrollBehavior::Instant)
-                        .block(ScrollLogicalPosition::Nearest),
-                );
+                .scroll_into_view_with_scroll_into_view_options(&{
+                    let options = ScrollIntoViewOptions::new();
+                    options.set_behavior(ScrollBehavior::Instant);
+                    options.set_block(ScrollLogicalPosition::Nearest);
+                    options
+                });
             set_index_last_shown.set(to_show);
         });
     });

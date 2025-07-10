@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
 use bit_set::BitSet;
-use codee::string::FromToStringCodec;
-use leptos::{
-    component, create_effect, create_node_ref, create_signal, ev, on_cleanup, view,
-    window_event_listener, with, IntoAttribute, IntoView, Resource, RwSignal, Signal, SignalGet,
-    SignalGetUntracked, SignalSet, SignalUpdate, Trigger, WriteSignal,
-};
+use leptos::ev;
+use leptos::prelude::codee::string::FromToStringCodec;
+use leptos::prelude::*;
 use leptos_use::storage::use_local_storage;
 
 use crate::playback_manager::PlaybackManager;
@@ -17,7 +14,7 @@ pub const LETTERS: &str = "qwerasdfzxcvuiopjkl;m,./";
 
 #[component]
 pub fn KeyboardListener(
-    playback_manager: Resource<(), PlaybackManager>,
+    playback_manager: LocalResource<RwSignal<PlaybackManager, LocalStorage>>,
     #[prop(into)] active_voices: Signal<BitSet>,
     set_start_cursor_index: WriteSignal<usize>,
     set_current_cursor_index: WriteSignal<usize>,
@@ -25,11 +22,11 @@ pub fn KeyboardListener(
     #[prop(into)] on_reset_song: Trigger,
 ) -> impl IntoView {
     let (_, set_held_notes) =
-        create_signal::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
+        signal_local::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
     let start_song_index = RwSignal::new(0);
     let most_recent_song_index = RwSignal::new(0);
     // Reset the indices when we have a new song.
-    create_effect(move |_| {
+    Effect::new(move |_| {
         on_reset_song.track(); // This will re-trigger the effect.
         start_song_index.set(0);
         most_recent_song_index.set(0);
@@ -38,18 +35,19 @@ pub fn KeyboardListener(
     });
 
     // Sync start index to start cursor
-    create_effect(move |_| {
-        with!(|playback_manager| {
+    Effect::new(move |_| {
+        playback_manager.with(|playback_manager| {
             let Some(playback_manager) = playback_manager else {
                 return;
             };
-            if let Some(max_song_index) = playback_manager.max_song_index() {
+            if let Some(max_song_index) = playback_manager.read().max_song_index() {
                 if max_song_index < start_song_index.get() {
                     start_song_index.set(max_song_index);
                 }
             }
-            if let Some(cursor_index) =
-                playback_manager.cursor_index_for_song_index(start_song_index.get())
+            if let Some(cursor_index) = playback_manager
+                .read()
+                .cursor_index_for_song_index(start_song_index.get())
             {
                 set_start_cursor_index.set(cursor_index);
             };
@@ -103,21 +101,18 @@ pub fn KeyboardListener(
     });
     on_cleanup(move || keyup_handle.remove());
 
-    let details_node_ref = create_node_ref();
+    let details_node_ref = NodeRef::new();
     let (has_seen_controls, set_has_seen_controls, _) =
         use_local_storage::<bool, FromToStringCodec>("has_seen_controls");
     // Annoyingly the mere presence of this attribute determines whether it's open
-    let attrs = if has_seen_controls.get_untracked() {
-        vec![]
-    } else {
-        vec![("open", true.into_attribute())]
-    };
+    // TODO RIGHTNOW - Verify this works
+    let is_open = !has_seen_controls.get_untracked();
 
     view! {
         <details
-            {..attrs}
+            open=is_open
             class="outline outline-2 outline-slate-500 bg-slate-100 p-1 rounded"
-            _ref=details_node_ref
+            node_ref=details_node_ref
             on:toggle=move |_| {
                 if !details_node_ref.get().map(|d| d.open()).unwrap_or(true) {
                     set_has_seen_controls.set(true);
@@ -198,9 +193,9 @@ impl KeyAction {
 /// Returns whether this key was used/valid.
 fn get_no_modifiers_key_action(
     key: String,
-    playback_manager: Resource<(), PlaybackManager>,
+    playback_manager: LocalResource<RwSignal<PlaybackManager, LocalStorage>>,
     active_voices: Signal<BitSet>,
-    set_held_notes: WriteSignal<HashMap<String, Vec<SamplerPlaybackGuard>>>,
+    set_held_notes: WriteSignal<HashMap<String, Vec<SamplerPlaybackGuard>>, LocalStorage>,
     start_song_index: RwSignal<usize>,
     most_recent_song_index: RwSignal<usize>,
     set_current_cursor_index: WriteSignal<usize>,
@@ -225,22 +220,24 @@ fn get_no_modifiers_key_action(
         })
     } else if let Some(offset) = LETTERS.find(key.as_str()) {
         KeyAction::new(move || {
-            with!(|playback_manager, active_voices, start_song_index| {
-                let song_index = start_song_index + offset;
-                most_recent_song_index.set(song_index);
-                let Some(playback_manager) = playback_manager else {
-                    return;
-                };
-                let Some((cursor_index, newly_held_notes)) =
-                    playback_manager.start_notes_at_relative_index(song_index, active_voices)
-                else {
-                    return;
-                };
-                set_current_cursor_index.set(cursor_index);
+            let playback_manager = playback_manager.read();
+            let active_voices = active_voices.read();
+            let start_song_index = start_song_index.read();
+            let song_index = *start_song_index + offset;
+            most_recent_song_index.set(song_index);
+            let Some(playback_manager) = &*playback_manager else {
+                return;
+            };
+            let Some((cursor_index, newly_held_notes)) = playback_manager
+                .write()
+                .start_notes_at_relative_index(song_index, &*active_voices)
+            else {
+                return;
+            };
+            set_current_cursor_index.set(cursor_index);
 
-                set_held_notes.update(|held_notes| {
-                    held_notes.insert(key, newly_held_notes);
-                });
+            set_held_notes.update(|held_notes| {
+                held_notes.insert(key, newly_held_notes);
             });
         })
     } else {

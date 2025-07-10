@@ -1,6 +1,7 @@
 use std::panic;
 
-use leptos::{mount_to_body, view};
+use leptos::prelude::*;
+use leptos::mount::mount_to_body;
 
 use crate::components::app::App;
 
