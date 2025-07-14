@@ -5,7 +5,8 @@
       "Bash(trunk:*)",
       "Bash(cargo check:*)",
       "Bash(rg:*)",
-      "Bash(timeout 60 cargo check)"
+      "Bash(timeout 60 cargo check)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
