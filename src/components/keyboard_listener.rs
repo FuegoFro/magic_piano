@@ -16,6 +16,8 @@ pub const LETTERS: &str = "qwerasdfzxcvuiopjkl;m,./";
 pub fn KeyboardListener(
     playback_manager: LocalResource<RwSignal<PlaybackManager, LocalStorage>>,
     #[prop(into)] active_voices: Signal<BitSet>,
+    start_song_index: RwSignal<usize>,
+    most_recent_song_index: RwSignal<usize>,
     set_start_cursor_index: WriteSignal<usize>,
     set_current_cursor_index: WriteSignal<usize>,
     // Lets us know when to reset things.
@@ -23,8 +25,6 @@ pub fn KeyboardListener(
 ) -> impl IntoView {
     let (_, set_held_notes) =
         signal_local::<HashMap<String, Vec<SamplerPlaybackGuard>>>(HashMap::new());
-    let start_song_index = RwSignal::new(0);
-    let most_recent_song_index = RwSignal::new(0);
     // Reset the indices when we have a new song.
     Effect::new(move |_| {
         on_reset_song.track(); // This will re-trigger the effect.

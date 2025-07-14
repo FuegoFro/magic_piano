@@ -6,6 +6,7 @@ use leptos::prelude::*;
 use web_sys::File;
 
 use crate::components::keyboard_listener::KeyboardListener;
+use crate::components::mobile_controls::MobileControls;
 use crate::components::sheet_music::SheetMusic;
 use crate::components::voice_control::{VoiceControl, VoiceState};
 use crate::future_util::PromiseAsFuture;
@@ -106,6 +107,9 @@ pub fn App() -> impl IntoView {
 
     let (start_cursor_index, set_start_cursor_index) = signal(0);
     let (current_cursor_index, set_current_cursor_index) = signal(0);
+    
+    let start_song_index = RwSignal::new(0);
+    let most_recent_song_index = RwSignal::new(0);
 
     let (song_data, set_song_data) = signal::<Option<SongData>>(None);
     let song_raw_data = LocalResource::new(move || async move {
@@ -213,6 +217,8 @@ pub fn App() -> impl IntoView {
             <KeyboardListener
                 playback_manager=playback_manager
                 active_voices=active_voices
+                start_song_index=start_song_index
+                most_recent_song_index=most_recent_song_index
                 set_start_cursor_index=set_start_cursor_index
                 set_current_cursor_index=set_current_cursor_index
                 on_reset_song=on_reset_song
@@ -308,6 +314,13 @@ pub fn App() -> impl IntoView {
                 }}
 
             </div>
+            <MobileControls
+                playback_manager=playback_manager
+                active_voices=active_voices
+                start_song_index=start_song_index
+                most_recent_song_index=most_recent_song_index
+                set_current_cursor_index=set_current_cursor_index
+            />
         </div>
     }
 }

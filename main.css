@@ -9,3 +9,14 @@
 .img-scroll-margin-block-5em img {
     scroll-margin-block: 5em;
 }
+
+/* Show mobile controls only on touch devices */
+.mobile-controls {
+    display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .mobile-controls {
+        display: flex;
+    }
+}
