@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Magic Piano</title>
+    
+    <link rel="stylesheet" href="https://fuegofro.github.io/magic_piano/main-9945f4f15354a38b.css"/>
+    <script src="https://fuegofro.github.io/magic_piano/opensheetmusicdisplay.min-a9a844cbca267986.js"></script>
+<link rel="modulepreload" href="https://fuegofro.github.io/magic_piano/magic_piano-5b5593ba796824d0.js" crossorigin="anonymous"><link rel="preload" href="https://fuegofro.github.io/magic_piano/magic_piano-5b5593ba796824d0_bg.wasm" crossorigin="anonymous" as="fetch" type="application/wasm"></head>
+<body>
+
+<script type="module">
+import init, * as bindings from 'https://fuegofro.github.io/magic_piano/magic_piano-5b5593ba796824d0.js';
+const wasm = await init({ module_or_path: 'https://fuegofro.github.io/magic_piano/magic_piano-5b5593ba796824d0_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
+</html>
